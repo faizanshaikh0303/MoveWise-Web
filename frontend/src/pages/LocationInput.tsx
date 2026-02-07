@@ -79,28 +79,15 @@ const LocationInput = () => {
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Current Address */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-900 mb-2">
-                Current Location
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </div>
-                <AddressAutocomplete
-                  label="Current Location"
-                  value={currentAddress}
-                  onChange={setCurrentAddress}
-                  placeholder="e.g., San Francisco, CA"
-                  icon="current"
-                  disabled={loading}
-                />
-              </div>
-              <p className="mt-2 text-sm text-gray-500">Enter city and state (e.g., "Austin, TX" or "123 Main St, Seattle, WA")</p>
-            </div>
+            <AddressAutocomplete
+              label="Current Location"
+              value={currentAddress}
+              onChange={setCurrentAddress}
+              placeholder="e.g., San Francisco, CA"
+              icon="current"
+              disabled={loading}
+            />
+            <p className="mt-2 text-sm text-gray-500">Enter city and state (e.g., "Austin, TX" or "123 Main St, Seattle, WA")</p>
 
             {/* Arrow Divider */}
             <div className="flex items-center justify-center py-2">
@@ -112,28 +99,15 @@ const LocationInput = () => {
             </div>
 
             {/* Destination Address */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-900 mb-2">
-                Destination Location
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </div>
-                <AddressAutocomplete
-                  label="Destination Location"
-                  value={destinationAddress}
-                  onChange={setDestinationAddress}
-                  placeholder="e.g., Austin, TX"
-                  icon="destination"
-                  disabled={loading}
-                />
-              </div>
-              <p className="mt-2 text-sm text-gray-500">Where are you considering moving to?</p>
-            </div>
+            <AddressAutocomplete
+              label="Destination Location"
+              value={destinationAddress}
+              onChange={setDestinationAddress}
+              placeholder="e.g., Austin, TX"
+              icon="destination"
+              disabled={loading}
+            />
+            <p className="mt-2 text-sm text-gray-500">Where are you considering moving to?</p>
 
             {/* Info Box */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -146,7 +120,7 @@ const LocationInput = () => {
                   <ul className="space-y-1 text-blue-800">
                     <li>• Crime rate comparison</li>
                     <li>• Cost of living breakdown</li>
-                    <li>• Nearby amenities (5-mile radius)</li>
+                    <li>• Nearby amenities (1-mile radius)</li>
                     <li>• Noise level analysis</li>
                     <li>• AI-powered insights</li>
                   </ul>

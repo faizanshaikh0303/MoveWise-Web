@@ -6,6 +6,7 @@ import { useAuthStore } from './stores/authStore';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import ProfileSetup from './pages/ProfileSetup';
+import ProfileSettings from './pages/ProfileSettings';
 import LocationInput from './pages/LocationInput';
 import AnalysisReport from './pages/AnalysisReport';
 
@@ -33,6 +34,18 @@ function App() {
           element={
             <ProtectedRoute>
               <ProfileSetup />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Profile Settings - Requires authentication and profile */}
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <ProfileCheckRoute>
+                <ProfileSettings />
+              </ProfileCheckRoute>
             </ProtectedRoute>
           }
         />
