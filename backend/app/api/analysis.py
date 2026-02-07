@@ -61,7 +61,8 @@ async def create_analysis(
         
         amenities_data = places_service.compare_amenities(
             current_lat, current_lng,
-            dest_lat, dest_lng
+            dest_lat, dest_lng,
+            hobbies=user_preferences.get('hobbies', [])
         )
         
         cost_data = cost_service.compare_costs(
@@ -79,11 +80,13 @@ async def create_analysis(
         commute_data = {}
         if user_profile and user_profile.work_address:
             commute_preference = user_profile.commute_preference or "driving"
-            commute_data = places_service.get_commute_info(
+            result = places_service.get_commute_info(
                 dest_lat, dest_lng,
                 user_profile.work_address,
                 commute_preference
             )
+            if result:
+                commute_data = result
         
         # 5. Generate AI insights
         llm_analysis = llm_service.generate_lifestyle_analysis(

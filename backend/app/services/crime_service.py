@@ -170,7 +170,8 @@ class CrimeService:
             'current_crime_rate': round(current_rate, 1),
             'destination_crime_rate': round(destination_rate, 1),
             'comparison': comparison,
-            'data_source': 'FBI Crime Data Explorer (2022)'
+            'data_source': 'FBI Crime Data Explorer (2022) - City-level data',
+            'note': 'Crime statistics represent the broader city area. Specific neighborhood safety can vary within a 2-mile radius.'
         }
 
 
