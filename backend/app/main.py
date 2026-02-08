@@ -40,4 +40,4 @@ def root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy"}
+    return {"status": "healthy", "message": "MoveWise API is running"}
