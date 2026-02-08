@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { profileAPI, authAPI } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import AddressAutocomplete from '../components/AddressAutocomplete';
-import type { UserProfile } from '../types';
 
 const ProfileSettings = () => {
   const navigate = useNavigate();

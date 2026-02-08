@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     GOOGLE_MAPS_API_KEY: str
     
     # CORS
-    CORS_ORIGINS: list = ["http://localhost:5173", "http://localhost:3000"]
+    CORS_ORIGINS: list = ["http://localhost:5173", "http://localhost:3000", "https://movewise-swart.vercel.app"]
     
     class Config:
         env_file = ".env"
