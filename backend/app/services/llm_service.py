@@ -47,7 +47,7 @@ class LLMService:
                         "content": prompt
                     }
                 ],
-                model="llama-3.3-70b-versatile",  # Fast and free on Groq
+                model="llama-3.3-70b-versatile",  # Current free model on Groq
                 temperature=0.7,
                 max_tokens=2000
             )
@@ -108,6 +108,7 @@ Commute:
             prompt += f"\nUSER PREFERENCES:\n"
             prompt += f"- Work schedule: {user_preferences.get('work_hours', 'N/A')}\n"
             prompt += f"- Sleep schedule: {user_preferences.get('sleep_hours', 'N/A')}\n"
+            prompt += f"- Noise tolerance: {user_preferences.get('noise_preference', 'N/A')} (user prefers {user_preferences.get('noise_preference', 'moderate')} environments)\n"
             prompt += f"- Hobbies: {', '.join(user_preferences.get('hobbies', []))}\n"
 
         prompt += """
@@ -116,14 +117,16 @@ Please provide:
 1. OVERVIEW (2-3 sentences summarizing the move's impact)
 
 2. LIFESTYLE CHANGES (exactly 6 bullet points, each starting with a check mark emoji ✓):
-   - Focus on: sleep quality, amenities access, dining/entertainment, safety, commute, cost
+   - Focus on: sleep quality (considering noise levels vs user preference), amenities access, dining/entertainment, safety, commute, cost
    - Be specific and data-driven
+   - IMPORTANT: Compare the noise environment to the user's noise tolerance preference
    - Keep each point concise (1 sentence)
 
 3. DETAILED INSIGHTS (3-4 paragraphs):
    - Expand on the most important changes
    - Provide actionable advice
-   - Consider user preferences if provided
+   - Consider user preferences, especially noise tolerance vs actual noise levels
+   - Address whether the noise environment matches the user's preference
    - End with an encouraging note
 
 Format your response EXACTLY as:

@@ -8,27 +8,40 @@ const ProfileSetup = () => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [workFromHome, setWorkFromHome] = useState(false);
   
   const isSubmitting = useRef(false);
   const explicitSubmit = useRef(false);
 
   const [formData, setFormData] = useState({
-    work_hours_start: '',
-    work_hours_end: '',
+    work_hours_start: '09:00',  // Default 9 AM
+    work_hours_end: '17:00',    // Default 5 PM
     work_address: '',
     commute_preference: 'driving',
-    sleep_hours_start: '',
-    sleep_hours_end: '',
+    sleep_hours_start: '23:00', // Default 11 PM
+    sleep_hours_end: '07:00',   // Default 7 AM
     noise_preference: 'quiet',
     hobbies: [] as string[],
   });
+
+  const HOBBY_OPTIONS = [
+    { value: 'gym', label: 'Gym & Fitness', icon: '💪' },
+    { value: 'hiking', label: 'Hiking', icon: '🥾' },
+    { value: 'parks', label: 'Parks', icon: '🌳' },
+    { value: 'restaurants', label: 'Restaurants', icon: '🍽️' },
+    { value: 'coffee', label: 'Coffee Shops', icon: '☕' },
+    { value: 'bars', label: 'Bars', icon: '🍺' },
+    { value: 'movies', label: 'Movies', icon: '🎬' },
+    { value: 'shopping', label: 'Shopping', icon: '🛍️' },
+    { value: 'library', label: 'Libraries', icon: '📚' },
+    { value: 'sports', label: 'Sports', icon: '⚽' },
+  ];
 
   useEffect(() => {
     checkExistingProfile();
   }, []);
 
   const checkExistingProfile = async () => {
-    // Don't check if we're in the middle of submitting
     if (isSubmitting.current) {
       return;
     }
@@ -36,12 +49,10 @@ const ProfileSetup = () => {
     try {
       const profile = await profileAPI.get();
       if (profile && !isSubmitting.current) {
-        // Profile exists, redirect to dashboard
         navigate('/dashboard', { replace: true });
         return;
       }
     } catch (error) {
-      // No profile exists, continue with setup
       console.log('No profile found, continuing with setup');
     } finally {
       setLoading(false);
@@ -50,8 +61,12 @@ const ProfileSetup = () => {
 
   const validateStep = () => {
     if (step === 1) {
-      if (!formData.work_hours_start || !formData.work_hours_end || !formData.work_address) {
-        setError('Please complete all work schedule fields');
+      if (!formData.work_hours_start || !formData.work_hours_end) {
+        setError('Please complete work schedule fields');
+        return false;
+      }
+      if (!workFromHome && !formData.work_address) {
+        setError('Please enter work address or select "Work from Home"');
         return false;
       }
     } else if (step === 2) {
@@ -75,10 +90,34 @@ const ProfileSetup = () => {
     setStep(step - 1);
   };
 
+  const handleWorkFromHomeToggle = () => {
+    setWorkFromHome(!workFromHome);
+    if (!workFromHome) {
+      setFormData({ ...formData, work_address: 'Work from Home', commute_preference: 'none' });
+    } else {
+      setFormData({ ...formData, work_address: '', commute_preference: 'driving' });
+    }
+  };
+
+  const handleAddressChange = useCallback((value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      work_address: value
+    }));
+  }, []);
+
+  const toggleHobby = (hobbyValue: string) => {
+    setFormData(prev => ({
+      ...prev,
+      hobbies: prev.hobbies.includes(hobbyValue)
+        ? prev.hobbies.filter(h => h !== hobbyValue)
+        : [...prev.hobbies, hobbyValue]
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Only proceed if user explicitly clicked Complete Setup
     if (!explicitSubmit.current) {
       console.log('WARNING: Form auto-submitted! Blocking.');
       return;
@@ -98,16 +137,20 @@ const ProfileSetup = () => {
       const work_hours = `${formData.work_hours_start} - ${formData.work_hours_end}`;
       const sleep_hours = `${formData.sleep_hours_start} - ${formData.sleep_hours_end}`;
       
-      await profileAPI.createOrUpdate({
+      const profileData = {
         work_hours,
         work_address: formData.work_address,
-        commute_preference: formData.commute_preference,
+        commute_preference: workFromHome ? 'none' : formData.commute_preference,
         sleep_hours,
         noise_preference: formData.noise_preference,
         hobbies: formData.hobbies.length > 0 ? formData.hobbies : undefined,
-      });
+      };
 
-      console.log('Profile saved successfully with hobbies:', formData.hobbies);
+      console.log('Submitting profile:', profileData);
+      
+      await profileAPI.createOrUpdate(profileData);
+      
+      console.log('Profile created successfully, navigating to dashboard...');
       navigate('/dashboard', { replace: true });
     } catch (err: any) {
       console.error('Profile creation error:', err);
@@ -115,11 +158,12 @@ const ProfileSetup = () => {
       console.error('Error data:', err.response?.data);
       
       let errorMessage = 'Failed to create profile. Please try again.';
+      
       if (err.response?.data?.detail) {
-        if (typeof err.response.data.detail === 'string') {
-          errorMessage = err.response.data.detail;
-        } else if (Array.isArray(err.response.data.detail)) {
+        if (Array.isArray(err.response.data.detail)) {
           errorMessage = err.response.data.detail.map((d: any) => d.msg).join(', ');
+        } else {
+          errorMessage = err.response.data.detail;
         }
       }
       
@@ -131,300 +175,293 @@ const ProfileSetup = () => {
     }
   };
 
-  const handleAddressChange = useCallback((value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      work_address: value
-    }));
-  }, []);
-
-  const toggleHobby = (hobbyValue: string) => {
-    if (formData.hobbies.includes(hobbyValue)) {
-      setFormData({
-        ...formData,
-        hobbies: formData.hobbies.filter(h => h !== hobbyValue)
-      });
-    } else {
-      setFormData({
-        ...formData,
-        hobbies: [...formData.hobbies, hobbyValue]
-      });
+  const handleCompleteSetup = () => {
+    console.log('Complete Setup button clicked');
+    explicitSubmit.current = true;
+    
+    const form = document.querySelector('form');
+    if (form) {
+      form.requestSubmit();
     }
   };
 
-  const HOBBY_OPTIONS = [
-    { value: 'gym', label: 'Gym & Fitness', icon: '💪' },
-    { value: 'hiking', label: 'Hiking', icon: '🥾' },
-    { value: 'parks', label: 'Parks', icon: '🌳' },
-    { value: 'restaurants', label: 'Restaurants', icon: '🍽️' },
-    { value: 'coffee', label: 'Coffee Shops', icon: '☕' },
-    { value: 'bars', label: 'Bars', icon: '🍺' },
-    { value: 'movies', label: 'Movies', icon: '🎬' },
-    { value: 'shopping', label: 'Shopping', icon: '🛍️' },
-    { value: 'library', label: 'Libraries', icon: '📚' },
-    { value: 'sports', label: 'Sports', icon: '⚽' },
-  ];
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
+      <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome to MoveWise!</h1>
-          <p className="text-gray-600">Let's personalize your experience</p>
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Complete Your Profile</h1>
+          <p className="text-gray-600">Make smarter moving decisions with AI-powered location analysis</p>
         </div>
 
-        {/* Progress Bar */}
+        {/* Progress Steps */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">Step {step} of 3</span>
-            <span className="text-sm text-gray-500">{Math.round((step / 3) * 100)}% complete</span>
+          <div className="flex items-center justify-between">
+            {[1, 2, 3].map((s) => (
+              <div key={s} className="flex items-center flex-1">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+                  step >= s ? 'bg-primary text-white' : 'bg-gray-200 text-gray-600'
+                }`}>
+                  {s}
+                </div>
+                {s < 3 && (
+                  <div className={`flex-1 h-1 mx-2 ${
+                    step > s ? 'bg-primary' : 'bg-gray-200'
+                  }`} />
+                )}
+              </div>
+            ))}
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div
-              className="bg-primary h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(step / 3) * 100}%` }}
-            ></div>
+          <div className="flex justify-between mt-2">
+            <span className="text-sm text-gray-600">Work</span>
+            <span className="text-sm text-gray-600">Sleep</span>
+            <span className="text-sm text-gray-600">Hobbies</span>
           </div>
         </div>
-
-        {/* Error Message */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-            {error}
-          </div>
-        )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit}>
-          {/* Step 1: Work Schedule */}
-          {step === 1 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 mb-1">Work Schedule</h2>
-                <p className="text-gray-600 text-sm mb-6">Help us understand your daily routine</p>
+        <div className="bg-white rounded-xl shadow-lg p-8">
+          <form onSubmit={handleSubmit}>
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-800 text-sm">{error}</p>
               </div>
+            )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Work Start Time
+            {/* Step 1: Work Schedule */}
+            {step === 1 && (
+              <div className="space-y-6">
+                <h2 className="text-2xl font-bold text-gray-900 mb-4">Work Schedule</h2>
+                
+                {/* Work from Home Toggle */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={workFromHome}
+                      onChange={handleWorkFromHomeToggle}
+                      className="w-5 h-5 text-primary border-gray-300 rounded focus:ring-primary"
+                    />
+                    <span className="ml-3 text-sm font-medium text-gray-900">
+                      🏠 I work from home (No commute needed)
+                    </span>
                   </label>
-                  <input
-                    type="time"
-                    value={formData.work_hours_start}
-                    onChange={(e) => setFormData({ ...formData, work_hours_start: e.target.value })}
-                    className="input"
-                    required
-                  />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Work End Time
-                  </label>
-                  <input
-                    type="time"
-                    value={formData.work_hours_end}
-                    onChange={(e) => setFormData({ ...formData, work_hours_end: e.target.value })}
-                    className="input"
-                    required
-                  />
-                </div>
-              </div>
 
-              <AddressAutocomplete
-                label="Work Address"
-                value={formData.work_address}
-                onChange={handleAddressChange}
-                placeholder="e.g., 123 Main St, San Francisco, CA"
-                icon="current"
-              />
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Commute Preference
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {['driving', 'transit', 'bicycling', 'walking'].map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, commute_preference: mode })}
-                      className={`p-2 rounded-lg border-2 text-sm transition-all ${
-                        formData.commute_preference === mode
-                          ? 'border-primary bg-primary/5 text-primary font-medium'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 2: Sleep Schedule */}
-          {step === 2 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 mb-1">Sleep Schedule</h2>
-                <p className="text-gray-600 text-sm mb-6">Tell us about your rest preferences</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Sleep Time
-                  </label>
-                  <input
-                    type="time"
-                    value={formData.sleep_hours_start}
-                    onChange={(e) => setFormData({ ...formData, sleep_hours_start: e.target.value })}
-                    className="input"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Wake Time
-                  </label>
-                  <input
-                    type="time"
-                    value={formData.sleep_hours_end}
-                    onChange={(e) => setFormData({ ...formData, sleep_hours_end: e.target.value })}
-                    className="input"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Noise Preference
-                </label>
-                <div className="space-y-2">
-                  {[
-                    { value: 'quiet', label: 'Quiet', desc: 'Peaceful, low-noise environments' },
-                    { value: 'moderate', label: 'Moderate', desc: 'Typical urban sounds are okay' },
-                    { value: 'doesnt-matter', label: "Doesn't Matter", desc: 'Noise is not a concern' },
-                  ].map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, noise_preference: option.value })}
-                      className={`w-full p-3 rounded-lg border-2 transition-all text-left ${
-                        formData.noise_preference === option.value
-                          ? 'border-primary bg-primary/5'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="font-medium text-gray-900">{option.label}</div>
-                      <div className="text-sm text-gray-600">{option.desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Hobbies - Checkbox Selection */}
-          {step === 3 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 mb-1">Hobbies & Interests</h2>
-                <p className="text-gray-600 text-sm mb-6">Select activities you enjoy - we'll find matching amenities</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                {HOBBY_OPTIONS.map((hobby) => {
-                  const isSelected = formData.hobbies.includes(hobby.value);
-                  return (
-                    <button
-                      key={hobby.value}
-                      type="button"
-                      onClick={() => toggleHobby(hobby.value)}
-                      className={`p-4 rounded-lg border-2 transition-all text-left ${
-                        isSelected
-                          ? 'border-primary bg-primary/10 shadow-sm'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl">{hobby.icon}</span>
-                        <div className="flex-1">
-                          <div className="font-medium text-gray-900">{hobby.label}</div>
-                        </div>
-                        {isSelected && (
-                          <svg className="w-5 h-5 text-primary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {formData.hobbies.length > 0 && (
-                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                  <p className="text-sm text-green-900">
-                    <span className="font-semibold">{formData.hobbies.length} selected:</span> We'll show amenities for {formData.hobbies.join(', ')} in your area reports.
-                  </p>
-                </div>
-              )}
-
-              {formData.hobbies.length === 0 && (
-                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <div className="flex gap-3">
-                    <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p className="text-sm text-blue-900">
-                      Select hobbies to personalize your reports. If you don't select any, we'll show all amenity types.
-                    </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Work Start Time
+                    </label>
+                    <input
+                      type="time"
+                      value={formData.work_hours_start}
+                      onChange={(e) => setFormData({ ...formData, work_hours_start: e.target.value })}
+                      className="input"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Work End Time
+                    </label>
+                    <input
+                      type="time"
+                      value={formData.work_hours_end}
+                      onChange={(e) => setFormData({ ...formData, work_hours_end: e.target.value })}
+                      className="input"
+                      required
+                    />
                   </div>
                 </div>
-              )}
-            </div>
-          )}
 
-          {/* Navigation Buttons */}
-          <div className="flex gap-4 mt-8">
-            {step > 1 && (
-              <button
-                type="button"
-                onClick={handleBack}
-                disabled={loading}
-                className="btn btn-secondary flex-1"
-              >
-                Back
-              </button>
+                {!workFromHome && (
+                  <>
+                    <AddressAutocomplete
+                      label="Work Address"
+                      value={formData.work_address}
+                      onChange={handleAddressChange}
+                      placeholder="e.g., 123 Main St, San Francisco, CA"
+                      icon="current"
+                    />
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Commute Preference
+                      </label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {['driving', 'transit', 'bicycling', 'walking'].map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, commute_preference: mode })}
+                            className={`p-2 rounded-lg border-2 text-sm transition-all ${
+                              formData.commute_preference === mode
+                                ? 'border-primary bg-primary/5 text-primary font-medium'
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                          >
+                            {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  className="btn btn-primary w-full"
+                >
+                  Continue
+                </button>
+              </div>
             )}
-            
-            {step < 3 ? (
-              <button
-                type="button"
-                onClick={handleNext}
-                className="btn btn-primary flex-1"
-              >
-                Next
-              </button>
-            ) : (
-              <button
-                type="submit"
-                onClick={() => {
-                  console.log('Complete Setup button clicked');
-                  explicitSubmit.current = true;
-                }}
-                disabled={loading}
-                className="btn btn-primary flex-1 disabled:opacity-50"
-              >
-                {loading ? 'Saving...' : 'Complete Setup'}
-              </button>
+
+            {/* Step 2: Sleep Schedule */}
+            {step === 2 && (
+              <div className="space-y-6">
+                <h2 className="text-2xl font-bold text-gray-900 mb-4">Sleep & Environment</h2>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Bedtime
+                    </label>
+                    <input
+                      type="time"
+                      value={formData.sleep_hours_start}
+                      onChange={(e) => setFormData({ ...formData, sleep_hours_start: e.target.value })}
+                      className="input"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Wake-up Time
+                    </label>
+                    <input
+                      type="time"
+                      value={formData.sleep_hours_end}
+                      onChange={(e) => setFormData({ ...formData, sleep_hours_end: e.target.value })}
+                      className="input"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Noise Preference
+                  </label>
+                  <div className="space-y-2">
+                    {[
+                      { value: 'quiet', label: 'Quiet', desc: 'Prefer peaceful, low-noise environments' },
+                      { value: 'moderate', label: 'Moderate', desc: 'Some activity is fine' },
+                      { value: 'lively', label: 'Lively', desc: 'Enjoy vibrant, bustling areas' },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, noise_preference: option.value })}
+                        className={`w-full p-3 rounded-lg border-2 transition-all text-left ${
+                          formData.noise_preference === option.value
+                            ? 'border-primary bg-primary/5'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="font-medium text-gray-900">{option.label}</div>
+                        <div className="text-sm text-gray-600">{option.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    className="btn btn-secondary flex-1"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNext}
+                    className="btn btn-primary flex-1"
+                  >
+                    Continue
+                  </button>
+                </div>
+              </div>
             )}
-          </div>
-        </form>
+
+            {/* Step 3: Hobbies */}
+            {step === 3 && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Hobbies & Interests</h2>
+                  <p className="text-gray-600 text-sm">Select what matters to you (we'll include essentials like grocery stores automatically)</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {HOBBY_OPTIONS.map((hobby) => {
+                    const isSelected = formData.hobbies.includes(hobby.value);
+                    return (
+                      <button
+                        key={hobby.value}
+                        type="button"
+                        onClick={() => toggleHobby(hobby.value)}
+                        className={`p-4 rounded-lg border-2 transition-all text-left ${
+                          isSelected
+                            ? 'border-primary bg-primary/5'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">{hobby.icon}</span>
+                          <span className="font-medium text-gray-900">{hobby.label}</span>
+                          {isSelected && (
+                            <svg className="w-5 h-5 text-primary ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-blue-900">
+                    {formData.hobbies.length > 0
+                      ? `${formData.hobbies.length} selected: ${formData.hobbies.join(', ')}`
+                      : 'No hobbies selected yet - we\'ll show all amenity types in your analysis'}
+                  </p>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    className="btn btn-secondary flex-1"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCompleteSetup}
+                    disabled={loading}
+                    className="btn btn-primary flex-1"
+                  >
+                    {loading ? 'Creating Profile...' : 'Complete Setup'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </form>
+        </div>
       </div>
     </div>
   );
