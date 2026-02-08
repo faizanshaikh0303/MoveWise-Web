@@ -9,3 +9,25 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+// Google Maps types
+declare global {
+  interface Window {
+    google?: {
+      maps: {
+        Map: any;
+        Marker: any;
+        Circle: any;
+        InfoWindow: any;
+        LatLngBounds: any;
+        SymbolPath: any;
+        event: any;
+        places: {
+          Autocomplete: any;
+        };
+      };
+    };
+  }
+}
+
+export {};

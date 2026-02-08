@@ -120,7 +120,7 @@ const LocationInput = () => {
                   <ul className="space-y-1 text-blue-800">
                     <li>• Crime rate comparison</li>
                     <li>• Cost of living breakdown</li>
-                    <li>• Nearby amenities (1-mile radius)</li>
+                    <li>• Nearby amenities (2-mile radius)</li>
                     <li>• Noise level analysis</li>
                     <li>• AI-powered insights</li>
                   </ul>

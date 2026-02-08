@@ -27,8 +27,6 @@ const ProfileSettings = () => {
     noise_preference: 'quiet',
     hobbies: [] as string[],
   });
-
-  const [hobbyInput, setHobbyInput] = useState('');
   
   // Password form
   const [passwordData, setPasswordData] = useState({
@@ -133,28 +131,28 @@ const ProfileSettings = () => {
         navigate('/');
       }, 2000);
     } catch (error: any) {
-      const errorMessage = error.response?.data?.detail || 'Failed to change password. Please check your current password.';
+      console.error('Password change error:', error);
+      
+      let errorMessage = 'Failed to change password. Please try again.';
+      
+      if (error.response) {
+        // Server responded with error
+        if (error.response.status === 422) {
+          errorMessage = 'Invalid request format. Please check your inputs.';
+        } else if (error.response.status === 400 || error.response.status === 401) {
+          errorMessage = error.response.data?.detail || 'Incorrect current password.';
+        } else {
+          errorMessage = error.response.data?.detail || errorMessage;
+        }
+      } else if (error.request) {
+        // Request made but no response
+        errorMessage = 'Server not responding. Please check if backend is running.';
+      }
+      
       setMessage({ type: 'error', text: errorMessage });
     } finally {
       setSaving(false);
     }
-  };
-
-  const addHobby = () => {
-    if (hobbyInput.trim() && !profileData.hobbies.includes(hobbyInput.trim())) {
-      setProfileData({
-        ...profileData,
-        hobbies: [...profileData.hobbies, hobbyInput.trim()],
-      });
-      setHobbyInput('');
-    }
-  };
-
-  const removeHobby = (hobby: string) => {
-    setProfileData({
-      ...profileData,
-      hobbies: profileData.hobbies.filter((h) => h !== hobby),
-    });
   };
 
   if (loading) {
@@ -376,48 +374,65 @@ const ProfileSettings = () => {
               {/* Hobbies */}
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Hobbies & Interests</h3>
-                <div className="flex gap-2 mb-4">
-                  <input
-                    type="text"
-                    value={hobbyInput}
-                    onChange={(e) => setHobbyInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addHobby();
-                      }
-                    }}
-                    placeholder="Add a hobby"
-                    className="input flex-1"
-                  />
-                  <button
-                    type="button"
-                    onClick={addHobby}
-                    className="btn btn-secondary px-6"
-                  >
-                    Add
-                  </button>
+                
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {[
+                    { value: 'gym', label: 'Gym & Fitness', icon: '💪' },
+                    { value: 'hiking', label: 'Hiking', icon: '🥾' },
+                    { value: 'parks', label: 'Parks', icon: '🌳' },
+                    { value: 'restaurants', label: 'Restaurants', icon: '🍽️' },
+                    { value: 'coffee', label: 'Coffee Shops', icon: '☕' },
+                    { value: 'bars', label: 'Bars', icon: '🍺' },
+                    { value: 'movies', label: 'Movies', icon: '🎬' },
+                    { value: 'shopping', label: 'Shopping', icon: '🛍️' },
+                    { value: 'library', label: 'Libraries', icon: '📚' },
+                    { value: 'sports', label: 'Sports', icon: '⚽' },
+                  ].map((hobby) => {
+                    const isSelected = profileData.hobbies.includes(hobby.value);
+                    return (
+                      <button
+                        key={hobby.value}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            setProfileData({
+                              ...profileData,
+                              hobbies: profileData.hobbies.filter(h => h !== hobby.value)
+                            });
+                          } else {
+                            setProfileData({
+                              ...profileData,
+                              hobbies: [...profileData.hobbies, hobby.value]
+                            });
+                          }
+                        }}
+                        className={`p-3 rounded-lg border-2 transition-all text-left ${
+                          isSelected
+                            ? 'border-primary bg-primary/10 shadow-sm'
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">{hobby.icon}</span>
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-900 text-sm">{hobby.label}</div>
+                          </div>
+                          {isSelected && (
+                            <svg className="w-4 h-4 text-primary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {profileData.hobbies.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {profileData.hobbies.map((hobby) => (
-                      <span
-                        key={hobby}
-                        className="inline-flex items-center gap-2 px-3 py-2 bg-primary/10 text-primary rounded-lg"
-                      >
-                        {hobby}
-                        <button
-                          type="button"
-                          onClick={() => removeHobby(hobby)}
-                          className="hover:text-primary-dark"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </span>
-                    ))}
+                  <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                    <p className="text-xs text-green-900">
+                      <span className="font-semibold">{profileData.hobbies.length} selected</span> - Amenities for these will appear in your reports
+                    </p>
                   </div>
                 )}
               </div>

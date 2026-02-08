@@ -1,21 +1,17 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { profileAPI } from '../services/api';
-import { useAuthStore } from '../stores/authStore';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 
 const ProfileSetup = () => {
   const navigate = useNavigate();
-  const user = useAuthStore((state) => state.user);
-  const isSubmitting = useRef(false);
-  const explicitSubmit = useRef(false);
-  
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [checkingProfile, setCheckingProfile] = useState(true);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [error, setError] = useState('');
   
-  // Form data
+  const isSubmitting = useRef(false);
+  const explicitSubmit = useRef(false);
+
   const [formData, setFormData] = useState({
     work_hours_start: '',
     work_hours_end: '',
@@ -26,8 +22,6 @@ const ProfileSetup = () => {
     noise_preference: 'quiet',
     hobbies: [] as string[],
   });
-
-  const [hobbyInput, setHobbyInput] = useState('');
 
   useEffect(() => {
     checkExistingProfile();
@@ -50,128 +44,60 @@ const ProfileSetup = () => {
       // No profile exists, continue with setup
       console.log('No profile found, continuing with setup');
     } finally {
-      setCheckingProfile(false);
+      setLoading(false);
     }
   };
 
-  const validateStep1 = () => {
-    const newErrors: Record<string, string> = {};
-    
-    if (!formData.work_hours_start) {
-      newErrors.work_hours_start = 'Work start time is required';
+  const validateStep = () => {
+    if (step === 1) {
+      if (!formData.work_hours_start || !formData.work_hours_end || !formData.work_address) {
+        setError('Please complete all work schedule fields');
+        return false;
+      }
+    } else if (step === 2) {
+      if (!formData.sleep_hours_start || !formData.sleep_hours_end) {
+        setError('Please complete all sleep schedule fields');
+        return false;
+      }
     }
-    if (!formData.work_hours_end) {
-      newErrors.work_hours_end = 'Work end time is required';
-    }
-    if (!formData.work_address) {
-      newErrors.work_address = 'Work address is required';
-    }
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const validateStep2 = () => {
-    const newErrors: Record<string, string> = {};
-    
-    if (!formData.sleep_hours_start) {
-      newErrors.sleep_hours_start = 'Sleep start time is required';
-    }
-    if (!formData.sleep_hours_end) {
-      newErrors.sleep_hours_end = 'Wake up time is required';
-    }
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    setError('');
+    return true;
   };
 
   const handleNext = () => {
-    console.log('handleNext called, current step:', step);
-    
-    if (step === 1 && !validateStep1()) {
-      return;
-    }
-    if (step === 2 && !validateStep2()) {
-      return;
-    }
-    
-    // Don't auto-advance from step 3, user must click "Complete Setup"
-    if (step < 3) {
-      console.log('Advancing to step:', step + 1);
+    if (validateStep()) {
       setStep(step + 1);
-      setErrors({});
-    } else {
-      console.log('Already on step 3, not advancing');
     }
   };
 
   const handleBack = () => {
-    if (step > 1) {
-      setStep(step - 1);
-      setErrors({});
-    }
-  };
-
-  const addHobby = () => {
-    if (hobbyInput.trim() && !formData.hobbies.includes(hobbyInput.trim())) {
-      setFormData({
-        ...formData,
-        hobbies: [...formData.hobbies, hobbyInput.trim()],
-      });
-      setHobbyInput('');
-    }
-  };
-
-  const removeHobby = (hobby: string) => {
-    setFormData({
-      ...formData,
-      hobbies: formData.hobbies.filter((h) => h !== hobby),
-    });
+    setError('');
+    setStep(step - 1);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    console.log('=== FORM SUBMIT TRIGGERED ===');
-    console.log('ProfileSetup: explicitSubmit.current =', explicitSubmit.current);
-    console.log('ProfileSetup: Starting submission, step =', step);
-    
-    // Only allow submit if user explicitly clicked the button
+
+    // Only proceed if user explicitly clicked Complete Setup
     if (!explicitSubmit.current) {
-      console.warn('WARNING: Form auto-submitted! Blocking. User must click Complete Setup button.');
-      explicitSubmit.current = false; // Reset
+      console.log('WARNING: Form auto-submitted! Blocking.');
       return;
     }
-    
-    // Reset flag
-    explicitSubmit.current = false;
-    
-    console.log('ProfileSetup: Current hobbies:', formData.hobbies);
-    console.log('ProfileSetup: Form data:', formData);
-    
-    // Block submit unless we're on step 3
-    if (step !== 3) {
-      console.warn('WARNING: Form submitted but not on step 3! Current step:', step);
+
+    console.log('Complete Setup button clicked - proceeding with submission');
+
+    if (!validateStep()) {
+      explicitSubmit.current = false;
       return;
     }
-    
-    // Double check - don't allow submit if we just transitioned to step 3
-    if (loading) {
-      console.warn('WARNING: Already processing, ignoring duplicate submit');
-      return;
-    }
-    
-    // Prevent any navigation during submission
-    isSubmitting.current = true;
-    
-    // Format work hours
-    const work_hours = `${formData.work_hours_start} - ${formData.work_hours_end}`;
-    const sleep_hours = `${formData.sleep_hours_start} - ${formData.sleep_hours_end}`;
-    
+
     setLoading(true);
+    isSubmitting.current = true;
 
     try {
-      console.log('ProfileSetup: Calling API to save profile...');
+      const work_hours = `${formData.work_hours_start} - ${formData.work_hours_end}`;
+      const sleep_hours = `${formData.sleep_hours_start} - ${formData.sleep_hours_end}`;
+      
       await profileAPI.createOrUpdate({
         work_hours,
         work_address: formData.work_address,
@@ -180,347 +106,325 @@ const ProfileSetup = () => {
         noise_preference: formData.noise_preference,
         hobbies: formData.hobbies.length > 0 ? formData.hobbies : undefined,
       });
-      
-      console.log('ProfileSetup: Profile saved successfully');
-      
-      // Wait a bit to ensure profile is saved
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      console.log('ProfileSetup: Navigating to dashboard');
-      // Navigate to dashboard with replace to prevent back button issues
+
+      console.log('Profile saved successfully with hobbies:', formData.hobbies);
       navigate('/dashboard', { replace: true });
-    } catch (error) {
-      console.error('ProfileSetup: Failed to save profile:', error);
-      alert('Failed to save profile. Please try again.');
+    } catch (err: any) {
+      console.error('Profile creation error:', err);
+      console.error('Error response:', err.response);
+      console.error('Error data:', err.response?.data);
+      
+      let errorMessage = 'Failed to create profile. Please try again.';
+      if (err.response?.data?.detail) {
+        if (typeof err.response.data.detail === 'string') {
+          errorMessage = err.response.data.detail;
+        } else if (Array.isArray(err.response.data.detail)) {
+          errorMessage = err.response.data.detail.map((d: any) => d.msg).join(', ');
+        }
+      }
+      
+      setError(errorMessage);
       isSubmitting.current = false;
+      explicitSubmit.current = false;
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddressChange = (value: string) => {
+  const handleAddressChange = useCallback((value: string) => {
     setFormData(prev => ({
       ...prev,
       work_address: value
     }));
+  }, []);
+
+  const toggleHobby = (hobbyValue: string) => {
+    if (formData.hobbies.includes(hobbyValue)) {
+      setFormData({
+        ...formData,
+        hobbies: formData.hobbies.filter(h => h !== hobbyValue)
+      });
+    } else {
+      setFormData({
+        ...formData,
+        hobbies: [...formData.hobbies, hobbyValue]
+      });
+    }
   };
 
-  if (checkingProfile) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-          <p className="text-gray-600 mt-4">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  const progress = (step / 3) * 100;
+  const HOBBY_OPTIONS = [
+    { value: 'gym', label: 'Gym & Fitness', icon: '💪' },
+    { value: 'hiking', label: 'Hiking', icon: '🥾' },
+    { value: 'parks', label: 'Parks', icon: '🌳' },
+    { value: 'restaurants', label: 'Restaurants', icon: '🍽️' },
+    { value: 'coffee', label: 'Coffee Shops', icon: '☕' },
+    { value: 'bars', label: 'Bars', icon: '🍺' },
+    { value: 'movies', label: 'Movies', icon: '🎬' },
+    { value: 'shopping', label: 'Shopping', icon: '🛍️' },
+    { value: 'library', label: 'Libraries', icon: '📚' },
+    { value: 'sports', label: 'Sports', icon: '⚽' },
+  ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
-      <div className="max-w-2xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-8">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-primary rounded-full mb-4">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900">Complete Your Profile</h1>
-          <p className="text-gray-600 mt-2">Help us personalize your location analysis</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome to MoveWise!</h1>
+          <p className="text-gray-600">Let's personalize your experience</p>
         </div>
 
         {/* Progress Bar */}
         <div className="mb-8">
-          <div className="flex justify-between items-center mb-2">
+          <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-gray-700">Step {step} of 3</span>
-            <span className="text-sm text-gray-500">{Math.round(progress)}% Complete</span>
+            <span className="text-sm text-gray-500">{Math.round((step / 3) * 100)}% complete</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div
               className="bg-primary h-2 rounded-full transition-all duration-300"
-              style={{ width: `${progress}%` }}
+              style={{ width: `${(step / 3) * 100}%` }}
             ></div>
           </div>
         </div>
 
-        {/* Form Card */}
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          <form onSubmit={handleSubmit}>
-            {/* Step 1: Work Schedule */}
-            {step === 1 && (
-              <div className="space-y-6">
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            {error}
+          </div>
+        )}
+
+        {/* Form */}
+        <form onSubmit={handleSubmit}>
+          {/* Step 1: Work Schedule */}
+          {step === 1 && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900 mb-1">Work Schedule</h2>
+                <p className="text-gray-600 text-sm mb-6">Help us understand your daily routine</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-1">Work Schedule</h2>
-                  <p className="text-gray-600 text-sm mb-6">Tell us about your work routine</p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Work Start Time *
-                    </label>
-                    <input
-                      type="time"
-                      value={formData.work_hours_start}
-                      onChange={(e) => setFormData({ ...formData, work_hours_start: e.target.value })}
-                      className={`input ${errors.work_hours_start ? 'border-red-500' : ''}`}
-                    />
-                    {errors.work_hours_start && (
-                      <p className="text-red-500 text-sm mt-1">{errors.work_hours_start}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Work End Time *
-                    </label>
-                    <input
-                      type="time"
-                      value={formData.work_hours_end}
-                      onChange={(e) => setFormData({ ...formData, work_hours_end: e.target.value })}
-                      className={`input ${errors.work_hours_end ? 'border-red-500' : ''}`}
-                    />
-                    {errors.work_hours_end && (
-                      <p className="text-red-500 text-sm mt-1">{errors.work_hours_end}</p>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <AddressAutocomplete
-                    label="Work Address *"
-                    value={formData.work_address}
-                    onChange={handleAddressChange}
-                    placeholder="e.g., 123 Main St, San Francisco, CA"
-                    icon="current"
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Work Start Time
+                  </label>
+                  <input
+                    type="time"
+                    value={formData.work_hours_start}
+                    onChange={(e) => setFormData({ ...formData, work_hours_start: e.target.value })}
+                    className="input"
+                    required
                   />
-                  {errors.work_address && (
-                    <p className="text-red-500 text-sm mt-1">{errors.work_address}</p>
-                  )}
-                  <p className="mt-1 text-sm text-gray-500">We'll calculate commute times for you</p>
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Commute Preference
+                    Work End Time
                   </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { value: 'driving', label: 'Driving' },
-                      { value: 'transit', label: 'Transit' },
-                      { value: 'bicycling', label: 'Bicycling' },
-                      { value: 'walking', label: 'Walking' },
-                    ].map((mode) => (
-                      <button
-                        key={mode.value}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, commute_preference: mode.value })}
-                        className={`p-3 rounded-lg border-2 transition-all ${
-                          formData.commute_preference === mode.value
-                            ? 'border-primary bg-primary/5 text-primary font-medium'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        {mode.label}
-                      </button>
-                    ))}
-                  </div>
+                  <input
+                    type="time"
+                    value={formData.work_hours_end}
+                    onChange={(e) => setFormData({ ...formData, work_hours_end: e.target.value })}
+                    className="input"
+                    required
+                  />
                 </div>
               </div>
-            )}
 
-            {/* Step 2: Sleep Schedule */}
-            {step === 2 && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-1">Sleep Schedule</h2>
-                  <p className="text-gray-600 text-sm mb-6">Help us assess noise compatibility</p>
-                </div>
+              <AddressAutocomplete
+                label="Work Address"
+                value={formData.work_address}
+                onChange={handleAddressChange}
+                placeholder="e.g., 123 Main St, San Francisco, CA"
+                icon="current"
+              />
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Sleep Time *
-                    </label>
-                    <input
-                      type="time"
-                      value={formData.sleep_hours_start}
-                      onChange={(e) => setFormData({ ...formData, sleep_hours_start: e.target.value })}
-                      className={`input ${errors.sleep_hours_start ? 'border-red-500' : ''}`}
-                    />
-                    {errors.sleep_hours_start && (
-                      <p className="text-red-500 text-sm mt-1">{errors.sleep_hours_start}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Wake Up Time *
-                    </label>
-                    <input
-                      type="time"
-                      value={formData.sleep_hours_end}
-                      onChange={(e) => setFormData({ ...formData, sleep_hours_end: e.target.value })}
-                      className={`input ${errors.sleep_hours_end ? 'border-red-500' : ''}`}
-                    />
-                    {errors.sleep_hours_end && (
-                      <p className="text-red-500 text-sm mt-1">{errors.sleep_hours_end}</p>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Noise Preference
-                  </label>
-                  <div className="space-y-2">
-                    {[
-                      { value: 'quiet', label: 'Quiet', desc: 'I prefer peaceful, low-noise environments' },
-                      { value: 'moderate', label: 'Moderate', desc: 'Some noise is okay, typical urban sounds' },
-                      { value: 'doesnt-matter', label: "Doesn't Matter", desc: 'Noise level is not a concern for me' },
-                    ].map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, noise_preference: option.value })}
-                        className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
-                          formData.noise_preference === option.value
-                            ? 'border-primary bg-primary/5'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <div className="font-medium text-gray-900">{option.label}</div>
-                        <div className="text-sm text-gray-600 mt-1">{option.desc}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Hobbies */}
-            {step === 3 && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-1">Hobbies & Interests</h2>
-                  <p className="text-gray-600 text-sm mb-6">We'll find amenities that match your lifestyle</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Add Your Hobbies
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={hobbyInput}
-                      onChange={(e) => setHobbyInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          addHobby();
-                        }
-                      }}
-                      placeholder="e.g., gym, hiking, restaurants"
-                      className="input flex-1"
-                    />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Commute Preference
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {['driving', 'transit', 'bicycling', 'walking'].map((mode) => (
                     <button
+                      key={mode}
                       type="button"
-                      onClick={addHobby}
-                      className="btn btn-primary px-6"
+                      onClick={() => setFormData({ ...formData, commute_preference: mode })}
+                      className={`p-2 rounded-lg border-2 text-sm transition-all ${
+                        formData.commute_preference === mode
+                          ? 'border-primary bg-primary/5 text-primary font-medium'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
                     >
-                      Add
+                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
                     </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Sleep Schedule */}
+          {step === 2 && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900 mb-1">Sleep Schedule</h2>
+                <p className="text-gray-600 text-sm mb-6">Tell us about your rest preferences</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Sleep Time
+                  </label>
+                  <input
+                    type="time"
+                    value={formData.sleep_hours_start}
+                    onChange={(e) => setFormData({ ...formData, sleep_hours_start: e.target.value })}
+                    className="input"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Wake Time
+                  </label>
+                  <input
+                    type="time"
+                    value={formData.sleep_hours_end}
+                    onChange={(e) => setFormData({ ...formData, sleep_hours_end: e.target.value })}
+                    className="input"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Noise Preference
+                </label>
+                <div className="space-y-2">
+                  {[
+                    { value: 'quiet', label: 'Quiet', desc: 'Peaceful, low-noise environments' },
+                    { value: 'moderate', label: 'Moderate', desc: 'Typical urban sounds are okay' },
+                    { value: 'doesnt-matter', label: "Doesn't Matter", desc: 'Noise is not a concern' },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, noise_preference: option.value })}
+                      className={`w-full p-3 rounded-lg border-2 transition-all text-left ${
+                        formData.noise_preference === option.value
+                          ? 'border-primary bg-primary/5'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="font-medium text-gray-900">{option.label}</div>
+                      <div className="text-sm text-gray-600">{option.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Hobbies - Checkbox Selection */}
+          {step === 3 && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900 mb-1">Hobbies & Interests</h2>
+                <p className="text-gray-600 text-sm mb-6">Select activities you enjoy - we'll find matching amenities</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {HOBBY_OPTIONS.map((hobby) => {
+                  const isSelected = formData.hobbies.includes(hobby.value);
+                  return (
+                    <button
+                      key={hobby.value}
+                      type="button"
+                      onClick={() => toggleHobby(hobby.value)}
+                      className={`p-4 rounded-lg border-2 transition-all text-left ${
+                        isSelected
+                          ? 'border-primary bg-primary/10 shadow-sm'
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{hobby.icon}</span>
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900">{hobby.label}</div>
+                        </div>
+                        {isSelected && (
+                          <svg className="w-5 h-5 text-primary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {formData.hobbies.length > 0 && (
+                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                  <p className="text-sm text-green-900">
+                    <span className="font-semibold">{formData.hobbies.length} selected:</span> We'll show amenities for {formData.hobbies.join(', ')} in your area reports.
+                  </p>
+                </div>
+              )}
+
+              {formData.hobbies.length === 0 && (
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex gap-3">
+                    <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-sm text-blue-900">
+                      Select hobbies to personalize your reports. If you don't select any, we'll show all amenity types.
+                    </p>
                   </div>
                 </div>
-
-                {formData.hobbies.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Your Hobbies ({formData.hobbies.length})
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {formData.hobbies.map((hobby) => (
-                        <span
-                          key={hobby}
-                          className="inline-flex items-center gap-2 px-3 py-2 bg-primary/10 text-primary rounded-lg"
-                        >
-                          {hobby}
-                          <button
-                            type="button"
-                            onClick={() => removeHobby(hobby)}
-                            className="hover:text-primary-dark"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {formData.hobbies.length === 0 && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <div className="flex gap-3">
-                      <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <p className="text-sm text-blue-900">
-                        Add hobbies like: gym, hiking, restaurants, coffee shops, parks, museums, nightlife, sports, etc.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Navigation Buttons */}
-            <div className="flex gap-4 mt-8">
-              {step > 1 && (
-                <button
-                  type="button"
-                  onClick={handleBack}
-                  className="btn btn-secondary flex-1"
-                >
-                  Back
-                </button>
-              )}
-              
-              {step < 3 ? (
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  className="btn btn-primary flex-1"
-                >
-                  Next
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={loading}
-                  onClick={() => {
-                    console.log('Complete Setup button clicked');
-                    explicitSubmit.current = true;
-                  }}
-                  className="btn btn-primary flex-1 disabled:opacity-50"
-                >
-                  {loading ? 'Saving...' : 'Complete Setup'}
-                </button>
               )}
             </div>
-          </form>
-        </div>
+          )}
 
-        {/* Required Fields Notice */}
-        <div className="text-center mt-4 text-sm text-gray-600">
-          * Required fields
-        </div>
+          {/* Navigation Buttons */}
+          <div className="flex gap-4 mt-8">
+            {step > 1 && (
+              <button
+                type="button"
+                onClick={handleBack}
+                disabled={loading}
+                className="btn btn-secondary flex-1"
+              >
+                Back
+              </button>
+            )}
+            
+            {step < 3 ? (
+              <button
+                type="button"
+                onClick={handleNext}
+                className="btn btn-primary flex-1"
+              >
+                Next
+              </button>
+            ) : (
+              <button
+                type="submit"
+                onClick={() => {
+                  console.log('Complete Setup button clicked');
+                  explicitSubmit.current = true;
+                }}
+                disabled={loading}
+                className="btn btn-primary flex-1 disabled:opacity-50"
+              >
+                {loading ? 'Saving...' : 'Complete Setup'}
+              </button>
+            )}
+          </div>
+        </form>
       </div>
     </div>
   );

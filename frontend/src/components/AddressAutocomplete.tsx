@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface AddressAutocompleteProps {
   value: string;
@@ -7,12 +7,6 @@ interface AddressAutocompleteProps {
   label?: string;
   icon?: 'current' | 'destination';
   disabled?: boolean;
-}
-
-declare global {
-  interface Window {
-    google: any;
-  }
 }
 
 const AddressAutocomplete = ({
@@ -24,40 +18,67 @@ const AddressAutocomplete = ({
   disabled = false,
 }: AddressAutocompleteProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [autocomplete, setAutocomplete] = useState<any>(null);
 
   useEffect(() => {
-    // Load Google Places API script
-    if (!window.google) {
-      const script = document.createElement('script');
-      const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-      script.async = true;
-      script.defer = true;
-      document.head.appendChild(script);
-
-      script.onload = () => {
+    // Check if script is already loaded or loading
+    const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+    
+    if (existingScript) {
+      // Script already exists, wait for it to load
+      if (window.google?.maps?.places) {
         initAutocomplete();
-      };
-    } else {
-      initAutocomplete();
+      } else {
+        existingScript.addEventListener('load', () => {
+          initAutocomplete();
+        });
+      }
+      return;
     }
+
+    // Load script for first time
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&libraries=places`;
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
+
+    script.onload = () => {
+      initAutocomplete();
+    };
+
+    // Cleanup on unmount
+    return () => {
+      if (autocomplete) {
+        window.google?.maps?.event?.clearInstanceListeners(autocomplete);
+      }
+    };
   }, []);
 
   const initAutocomplete = () => {
-    if (!inputRef.current || !window.google) return;
+    if (!inputRef.current || !window.google?.maps?.places) {
+      console.log('Waiting for Google Maps to load...');
+      return;
+    }
 
-    const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
-      types: ['address'],
-      componentRestrictions: { country: 'us' },
-      fields: ['formatted_address', 'geometry'],
-    });
+    try {
+      const autocompleteInstance = new window.google.maps.places.Autocomplete(inputRef.current, {
+        types: ['address'],
+        componentRestrictions: { country: 'us' },
+        fields: ['formatted_address', 'geometry'],
+      });
 
-    autocomplete.addListener('place_changed', () => {
-      const place = autocomplete.getPlace();
-      if (place.formatted_address) {
-        onChange(place.formatted_address);
-      }
-    });
+      autocompleteInstance.addListener('place_changed', () => {
+        const place = autocompleteInstance.getPlace();
+        if (place.formatted_address) {
+          onChange(place.formatted_address);
+        }
+      });
+
+      setAutocomplete(autocompleteInstance);
+    } catch (error) {
+      console.error('Error initializing autocomplete:', error);
+    }
   };
 
   const iconColor = icon === 'destination' ? 'text-green-500' : 'text-gray-400';

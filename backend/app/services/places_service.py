@@ -139,9 +139,9 @@ class PlacesService:
         lng: float, 
         radius: int = 3219,  # 2 miles in meters
         hobbies: Optional[List[str]] = None
-    ) -> Dict[str, int]:
+    ) -> Dict[str, Any]:
         """
-        Get count of nearby amenities within 2-mile radius.
+        Get nearby amenities within 2-mile radius with full location details.
         Filters by user hobbies if provided.
         
         Args:
@@ -149,10 +149,14 @@ class PlacesService:
             lng: Longitude
             radius: Search radius in meters (default 3219m = 2 miles)
             hobbies: List of user hobbies to filter amenities
+            
+        Returns:
+            Dict with counts and locations for each amenity type
         """
         amenity_types = self.get_amenity_types_from_hobbies(hobbies)
         
         results = {}
+        locations = {}
         
         for place_type, display_name in amenity_types.items():
             try:
@@ -244,13 +248,31 @@ class PlacesService:
                                  ['mall', 'plaza', 'center', 'shopping', 'galleria',
                                   'market', 'square', 'village', 'outlet'])]
                 
+                # Store count
                 count = len(places)
                 results[display_name] = count
+                
+                # Store location details for map
+                locations[display_name] = [
+                    {
+                        'name': place.get('name', 'Unknown'),
+                        'lat': place.get('geometry', {}).get('location', {}).get('lat', 0),
+                        'lng': place.get('geometry', {}).get('location', {}).get('lng', 0),
+                        'type': display_name,
+                        'address': place.get('vicinity', ''),
+                    }
+                    for place in places
+                ]
+                
             except Exception as e:
                 print(f"Error fetching {place_type}: {e}")
                 results[display_name] = 0
+                locations[display_name] = []
         
-        return results
+        return {
+            'counts': results,
+            'locations': locations
+        }
     
     def compare_amenities(
         self,
@@ -261,12 +283,16 @@ class PlacesService:
         hobbies: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
-        Compare amenities between two locations within 1-mile radius.
+        Compare amenities between two locations within 2-mile radius.
         Filters by user hobbies if provided.
         """
         
-        current_amenities = self.get_nearby_amenities(current_lat, current_lng, hobbies=hobbies)
-        destination_amenities = self.get_nearby_amenities(destination_lat, destination_lng, hobbies=hobbies)
+        current_data = self.get_nearby_amenities(current_lat, current_lng, hobbies=hobbies)
+        destination_data = self.get_nearby_amenities(destination_lat, destination_lng, hobbies=hobbies)
+        
+        current_amenities = current_data['counts']
+        destination_amenities = destination_data['counts']
+        destination_locations = destination_data['locations']
         
         # Calculate total amenities
         current_total = sum(current_amenities.values())
@@ -297,6 +323,9 @@ class PlacesService:
         return {
             'current_amenities': current_amenities,
             'destination_amenities': destination_amenities,
+            'destination_locations': destination_locations,
+            'destination_lat': destination_lat,
+            'destination_lng': destination_lng,
             'comparison_text': comparison_text,
             'search_radius': '2 miles',
             'note': 'Filtered for major facilities only (e.g., actual hospitals, not clinics). More accurate counts.'
@@ -341,3 +370,4 @@ class PlacesService:
 
 # Create singleton instance
 places_service = PlacesService()
+

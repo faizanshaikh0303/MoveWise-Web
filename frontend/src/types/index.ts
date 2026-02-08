@@ -61,7 +61,18 @@ export interface CrimeData {
 export interface AmenitiesData {
   current_amenities: Record<string, number>;
   destination_amenities: Record<string, number>;
+  destination_locations: Record<string, Array<{
+    name: string;
+    lat: number;
+    lng: number;
+    type: string;
+    address?: string;
+  }>>;
+  destination_lat: number;
+  destination_lng: number;
   comparison_text: string;
+  search_radius?: string;
+  note?: string;
 }
 
 export interface CostData {
