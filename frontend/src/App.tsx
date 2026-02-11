@@ -1,34 +1,49 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
-import { useAuthStore } from './stores/authStore';
+import { useAuthStore } from '@/stores/authStore';
+import { wakeUpBackend } from '@/utils/wakeBackend';
 
-// Pages
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import ProfileSetup from './pages/ProfileSetup';
-import ProfileSettings from './pages/ProfileSettings';
-import LocationInput from './pages/LocationInput';
-import AnalysisReport from './pages/AnalysisReport';
+// Pages (we'll create these next)
+import Login from '@/pages/Login';
+import Dashboard from '@/pages/Dashboard';
+import ProfileSetup from '@/pages/ProfileSetup';
+import LocationInput from '@/pages/LocationInput';
+import AnalysisReport from '@/pages/AnalysisReport';
 
 // Components
-import ProtectedRoute from './components/ProtectedRoute';
-import ProfileCheckRoute from './components/ProfileCheckRoute';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import BackendStatusIndicator from '@/components/BackendStatusIndicator';
 
 function App() {
   const fetchUser = useAuthStore((state) => state.fetchUser);
 
   useEffect(() => {
+    // Wake up backend immediately on app load
+    wakeUpBackend();
+    
     // Check if user is logged in on mount
     fetchUser();
   }, [fetchUser]);
 
   return (
-    <BrowserRouter>
+    <>
+      {/* Backend Status Indicator */}
+      <BackendStatusIndicator />
+      
+      <BrowserRouter>
       <Routes>
         {/* Public route */}
         <Route path="/" element={<Login />} />
 
-        {/* Profile Setup - Protected but doesn't require profile */}
+        {/* Protected routes */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/profile-setup"
           element={
@@ -37,37 +52,11 @@ function App() {
             </ProtectedRoute>
           }
         />
-
-        {/* Profile Settings - Requires authentication and profile */}
-        <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              <ProfileCheckRoute>
-                <ProfileSettings />
-              </ProfileCheckRoute>
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Protected routes that REQUIRE profile completion */}
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <ProfileCheckRoute>
-                <Dashboard />
-              </ProfileCheckRoute>
-            </ProtectedRoute>
-          }
-        />
         <Route
           path="/new-analysis"
           element={
             <ProtectedRoute>
-              <ProfileCheckRoute>
-                <LocationInput />
-              </ProfileCheckRoute>
+              <LocationInput />
             </ProtectedRoute>
           }
         />
@@ -75,17 +64,16 @@ function App() {
           path="/analysis/:id"
           element={
             <ProtectedRoute>
-              <ProfileCheckRoute>
-                <AnalysisReport />
-              </ProfileCheckRoute>
+              <AnalysisReport />
             </ProtectedRoute>
           }
         />
 
-        {/* Catch all */}
+        {/* Catch all - redirect to dashboard if authenticated, login otherwise */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
+    </>
   );
 }
 
