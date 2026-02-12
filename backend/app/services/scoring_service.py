@@ -114,35 +114,43 @@ class ScoringService:
     def _calculate_lifestyle_score(self, amenities_data: Dict[str, Any]) -> float:
         """
         Calculate lifestyle score from amenities data
-        
-        Factors:
-        - Number of desired amenities nearby
-        - Variety of amenity types
-        - Distance to amenities
         """
         if not amenities_data:
-            return 70
+            return 10.0
         
-        destination = amenities_data.get('destination', {})
+        # Get destination amenities dictionary
+        dest_amenities = amenities_data.get('destination_amenities', {})
         
-        # Get amenity counts
-        total_amenities = destination.get('total_count', 0)
-        unique_types = len(destination.get('by_type', {}))
+        if not dest_amenities:
+            return 10.0
         
-        # Base score from quantity (0-50 points)
-        quantity_score = min(50, total_amenities * 2)
+        # Count total amenities (sum all categories)
+        total_count = sum(dest_amenities.values())
         
-        # Variety bonus (0-30 points)
-        variety_score = min(30, unique_types * 3)
+        print(f"🔍 Lifestyle: {total_count} total amenities")
+        print(f"   Breakdown: {dest_amenities}")
         
-        # Distance penalty (0-20 points)
-        # Closer amenities = higher score
-        avg_distance = destination.get('average_distance', 5)
-        distance_score = max(0, 20 - (avg_distance * 2))
+        # Score based on total count
+        if total_count >= 50:
+            score = 100.0
+        elif total_count >= 30:
+            score = 90.0
+        elif total_count >= 20:
+            score = 75.0
+        elif total_count >= 10:
+            score = 60.0
+        elif total_count >= 5:
+            score = 40.0
+        else:
+            score = 20.0
         
-        total_score = quantity_score + variety_score + distance_score
+        # Bonus for variety (multiple types)
+        variety_bonus = min(len(dest_amenities.keys()) * 3, 15)
+        final_score = min(score + variety_bonus, 100.0)
         
-        return min(100, max(0, total_score))
+        print(f"   Score: {score} + {variety_bonus} variety = {final_score}")
+        
+        return final_score
     
     def _calculate_convenience_score(self, commute_data: Dict[str, Any]) -> float:
         """

@@ -6,7 +6,7 @@ from app.models.profile import UserProfile
 from app.models.analysis import Analysis
 from app.schemas.analysis import AnalysisRequest, AnalysisResponse, AnalysisList
 from app.api.auth import get_current_user
-
+from app.core.config import settings
 # Existing services
 from app.services.places_service import places_service
 from app.services.crime_service import crime_service
@@ -16,7 +16,7 @@ from app.services.noise_service import noise_service
 # NEW: Real data services with FREE APIs
 from app.services.fbi_real_crime_service import fbi_real_crime_service  # REAL FBI Data!
 from app.services.census_cost_service import census_cost_service  # Census Bureau (FREE!)
-from app.services.osm_noise_service import osm_noise_service  # OpenStreetMap (FREE!)
+from app.services.google_noise_service import google_noise_service
 from app.services.scoring_service import scoring_service
 from app.services.llm_service import llm_service
 
@@ -24,7 +24,7 @@ from typing import List
 import json
 import re
 from datetime import datetime
-
+import requests
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
 
@@ -41,21 +41,24 @@ def safe_json_dumps(obj):
     return json.dumps(obj, cls=DateTimeEncoder)
 
 
-# Helper function to extract ZIP code
-def extract_zip_code(address: str) -> str:
-    """Extract 5-digit ZIP code from address string"""
-    match = re.search(r'\b\d{5}(?:-\d{4})?\b', address)
-    if match:
-        return match.group(0)[:5]  # Return just 5 digits
-    # Default fallback based on common patterns
-    if any(city in address.lower() for city in ['new york', 'manhattan', 'brooklyn']):
+def get_zip_from_coords(lat, lng):
+    """Reverse geocode to get ZIP code"""
+    try:
+        url = f"https://maps.googleapis.com/maps/api/geocode/json"
+        params = {
+            'latlng': f'{lat},{lng}',
+            'key': settings.GOOGLE_MAPS_API_KEY
+        }
+        response = requests.get(url, params=params, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            for result in data.get('results', []):
+                for component in result.get('address_components', []):
+                    if 'postal_code' in component.get('types', []):
+                        return component['short_name']
+        return '10001'  # Fallback
+    except:
         return '10001'
-    elif any(city in address.lower() for city in ['san francisco', 'sf']):
-        return '94102'
-    elif any(city in address.lower() for city in ['los angeles', 'la']):
-        return '90001'
-    return '10001'  # Default NYC
-
 
 @router.post("/", response_model=AnalysisResponse)
 async def create_analysis(
@@ -90,8 +93,10 @@ async def create_analysis(
         print(f"✓ Destination: ({dest_lat}, {dest_lng})")
         
         # 2. Extract ZIP codes for cost analysis
-        current_zip = extract_zip_code(request.current_address)
-        dest_zip = extract_zip_code(request.destination_address)
+        # current_zip = extract_zip_code(request.current_address)
+        # dest_zip = extract_zip_code(request.destination_address)
+        current_zip = get_zip_from_coords(current_lat, current_lng)
+        dest_zip = get_zip_from_coords(dest_lat, dest_lng)
         print(f"📮 ZIP codes: {current_zip} → {dest_zip}")
         
         # 3. Get user profile for personalization
@@ -106,7 +111,7 @@ async def create_analysis(
                 'work_address': user_profile.work_address,
                 'sleep_hours': user_profile.sleep_hours or '23:00 - 07:00',
                 'noise_preference': user_profile.noise_preference or 'moderate',
-                'hobbies': user_profile.hobbies.split(',') if user_profile.hobbies else [],
+                'hobbies': user_profile.hobbies if user_profile.hobbies else [],
                 'commute_preference': user_profile.commute_preference or 'driving'
             }
         else:
@@ -147,17 +152,17 @@ async def create_analysis(
             )
         
         # === NOISE DATA (OpenStreetMap) ===
-        print("🔊 Analyzing noise environment (OpenStreetMap)...")
+        print("🔊 Analyzing noise environment...")
         try:
-            noise_data = osm_noise_service.compare_noise_environments(
+            noise_data = google_noise_service.compare_noise_levels(
                 current_lat, current_lng,
                 dest_lat, dest_lng,
-                user_preferences=user_preferences
+                user_preferences.get('noise_preference', 'moderate')
             )
             print(f"✓ Noise: {noise_data['destination']['estimated_db']:.1f} dB")
             print(f"  Category: {noise_data['destination']['noise_category']}")
         except Exception as e:
-            print(f"⚠️  OSM Noise error (using fallback): {e}")
+            print(f"⚠️  Google Noise error (using fallback): {e}")
             # Fallback to old service
             noise_data = noise_service.compare_noise_levels(
                 request.current_address,
@@ -197,10 +202,11 @@ async def create_analysis(
         print("🚗 Calculating commute time...")
         commute_data = {}
         if user_profile and user_profile.work_address:
+            work_address = user_profile.work_address
             commute_preference = user_preferences.get('commute_preference', 'driving')
             result = places_service.get_commute_info(
                 dest_lat, dest_lng,
-                user_profile.work_address,
+                work_address,
                 commute_preference
             )
             if result:
