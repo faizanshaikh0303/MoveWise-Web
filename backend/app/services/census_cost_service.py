@@ -70,8 +70,8 @@ class CensusCostService:
             percent_change = (difference / current_costs['total_monthly'] * 100) if current_costs['total_monthly'] > 0 else 0
             
             # Calculate affordability scores
-            current_score = self._calculate_affordability_score(current_costs['total_monthly'])
-            dest_score = self._calculate_affordability_score(dest_costs['total_monthly'])
+            current_score = current_costs['affordability_score']
+            dest_score = dest_costs['affordability_score']
             
             return {
                 'current': current_costs,
@@ -128,7 +128,7 @@ class CensusCostService:
         }
         
         try:
-            zip_int = int(zip_code)
+            zip_int = int(zip_code[:5])  # Handle ZIP+4 format
             for state, ranges in zip_ranges.items():
                 for start, end in ranges:
                     if start <= zip_int <= end:
@@ -179,7 +179,7 @@ class CensusCostService:
             'housing': {
                 'monthly_rent': monthly_rent,
                 'annual_rent': round(monthly_rent * 12, 2),
-                'bedrooms': bedrooms,
+                'bedrooms': bedrooms,  # FRONTEND NEEDS THIS!
                 'year': datetime.now().year,
                 'source': 'Census Bureau (adjusted)'
             },
@@ -188,7 +188,7 @@ class CensusCostService:
             'total_annual': round(total_monthly * 12, 2),
             'cpi_index': cpi_index,
             'cost_index': cost_index,
-            'affordability_score': affordability_score,
+            'affordability_score': affordability_score,  # FRONTEND NEEDS THIS!
             'data_source': 'US Census Bureau + Regional Indices'
         }
     
@@ -211,23 +211,37 @@ class CensusCostService:
             '331', '332', '333',
             # DC
             '200', '201', '202',
+            # Atlanta
+            '303', '304',
+            # Austin
+            '787',
         ]
         
         return any(zip_code.startswith(prefix) for prefix in major_metros)
     
     def _calculate_affordability_score(self, total_monthly: float) -> float:
-        """Calculate affordability score (0-100, higher is more affordable)"""
-        national_median = 5000  # US median household expenses
+        """
+        Calculate affordability score (0-100, higher is more affordable)
+        Based on percentage of national median
+        """
+        national_median = 3000  # US median monthly expenses
         
         if total_monthly <= national_median * 0.6:
-            score = 100  # Very affordable
+            score = 100.0  # Very affordable (60% or less of median)
+        elif total_monthly <= national_median * 0.8:
+            score = 90.0   # Affordable
         elif total_monthly <= national_median:
-            score = 80 + (20 * (1 - (total_monthly / national_median)))
-        elif total_monthly <= national_median * 1.5:
-            deviation = (total_monthly - national_median) / (national_median * 0.5)
-            score = 60 - (20 * deviation)
+            score = 80.0   # At median
+        elif total_monthly <= national_median * 1.2:
+            score = 70.0   # Slightly above median
+        elif total_monthly <= national_median * 1.4:
+            score = 60.0   # Getting expensive
+        elif total_monthly <= national_median * 1.6:
+            score = 50.0   # Expensive
+        elif total_monthly <= national_median * 1.8:
+            score = 40.0   # Very expensive
         else:
-            score = max(20, 40 - ((total_monthly - national_median * 1.5) / 100))
+            score = max(20.0, 40.0 - ((total_monthly - national_median * 1.8) / 200))
         
         return round(score, 1)
     
@@ -254,22 +268,55 @@ class CensusCostService:
         """Generate personalized cost recommendation"""
         
         if monthly_diff < -200:
-            return f"Great news! You'll save ${abs(monthly_diff):.0f}/month (${abs(monthly_diff * 12):.0f}/year). This is a {abs(percent_change):.1f}% reduction."
+            return f"✅ Great savings! You'll save ${abs(monthly_diff):.0f}/month (${abs(monthly_diff * 12):.0f}/year). Consider investing the difference or upgrading your lifestyle."
         elif monthly_diff < 0:
-            return f"You'll save ${abs(monthly_diff):.0f}/month (${abs(monthly_diff * 12):.0f}/year)."
+            return f"💵 You'll save ${abs(monthly_diff):.0f}/month (${abs(monthly_diff * 12):.0f}/year) - a nice financial cushion."
         elif monthly_diff < 200:
-            return f"Costs will increase by ${monthly_diff:.0f}/month, but this is manageable."
+            return f"📊 Costs will increase by ${monthly_diff:.0f}/month, but this is manageable given your budget."
         elif monthly_diff < 500:
-            return f"Significant increase: ${monthly_diff:.0f}/month (${monthly_diff * 12:.0f}/year). Budget accordingly."
+            return f"⚠️ Significant increase: ${monthly_diff:.0f}/month (${monthly_diff * 12:.0f}/year). Budget accordingly and review expenses."
         else:
-            return f"Major cost increase: ${monthly_diff:.0f}/month. This requires careful financial planning."
+            return f"⚠️ Major cost increase: ${monthly_diff:.0f}/month (${monthly_diff * 12:.0f}/year). This requires careful financial planning."
     
     def _get_fallback_costs(self, current_zip: str, dest_zip: str, bedrooms: int) -> Dict:
-        """Fallback if calculations fail"""
-        current_state = self._zip_to_state(current_zip)
-        dest_state = self._zip_to_state(dest_zip)
+        """Fallback if calculations fail - use national averages"""
+        print(f"⚠️ Using fallback cost data")
         
-        return self.get_comprehensive_costs(current_zip, dest_zip, bedrooms)
+        # Use national averages
+        avg_rent = self.national_median_rent.get(bedrooms, 1400)
+        
+        fallback_costs = {
+            'housing': {
+                'monthly_rent': avg_rent,
+                'bedrooms': bedrooms,
+                'source': 'National Average (Fallback)'
+            },
+            'expenses': {
+                'utilities': avg_rent * 0.12,
+                'groceries': avg_rent * 0.30,
+                'transportation': avg_rent * 0.20,
+                'healthcare': avg_rent * 0.15,
+                'entertainment': avg_rent * 0.10,
+                'miscellaneous': avg_rent * 0.08
+            },
+            'total_monthly': avg_rent * 1.95,
+            'total_annual': avg_rent * 1.95 * 12,
+            'affordability_score': 70.0,
+            'data_source': 'National Average (Fallback)'
+        }
+        
+        return {
+            'current': fallback_costs,
+            'destination': fallback_costs,
+            'comparison': {
+                'monthly_difference': 0,
+                'annual_difference': 0,
+                'percent_change': 0,
+                'is_more_expensive': False,
+                'score_difference': 0,
+                'recommendation': "Using average national cost data - actual costs may vary."
+            }
+        }
 
 
 # Global instance

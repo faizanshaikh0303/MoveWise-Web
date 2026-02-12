@@ -1,5 +1,5 @@
 import googlemaps
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from app.core.config import settings
 
 
@@ -21,18 +21,20 @@ class PlacesService:
             print(f"Geocoding error: {e}")
             return None, None
     
-    def get_nearby_amenities(self, lat: float, lng: float, radius: int = 1609, hobbies: list = None) -> Dict[str, int]:
+    def get_nearby_amenities_with_locations(
+        self, 
+        lat: float, 
+        lng: float, 
+        radius: int = 1609, 
+        hobbies: list = None
+    ) -> Tuple[Dict[str, int], Dict[str, List[Dict]]]:
         """
-        Get count of nearby amenities within 1 mile radius
-        
-        Args:
-            lat: Latitude
-            lng: Longitude  
-            radius: Search radius in meters (default 1 mile = 1609m)
-            hobbies: List of user hobbies (e.g., ['coffee', 'movies', 'shopping'])
+        Get count AND locations of nearby amenities within 1 mile radius
         
         Returns:
-            Dictionary with amenity counts (max 20 per category from Google API)
+            Tuple of (counts_dict, locations_dict)
+            - counts_dict: {category: count}
+            - locations_dict: {category: [{"name": "", "lat": 0, "lng": 0, "address": ""}]}
         """
         
         # Map hobbies to Google Places types
@@ -85,7 +87,8 @@ class PlacesService:
         print(f"   Searching within {radius}m (~{radius/1609:.1f} miles)")
         print(f"   Categories: {list(amenity_types.values())}")
         
-        results = {}
+        counts = {}
+        locations = {}
         
         for place_type, display_name in amenity_types.items():
             try:
@@ -96,9 +99,22 @@ class PlacesService:
                     type=place_type
                 )
                 
-                # Just count the results (max 20 from Google)
-                result_count = len(response.get('results', []))
-                results[display_name] = result_count
+                results = response.get('results', [])
+                result_count = len(results)
+                counts[display_name] = result_count
+                
+                # Store location data for mapping
+                location_list = []
+                for place in results:
+                    location_list.append({
+                        'name': place.get('name', 'Unknown'),
+                        'lat': place['geometry']['location']['lat'],
+                        'lng': place['geometry']['location']['lng'],
+                        'address': place.get('vicinity', ''),
+                        'type': display_name
+                    })
+                
+                locations[display_name] = location_list
                 
                 # Log if we hit the cap
                 if result_count == 20:
@@ -108,9 +124,10 @@ class PlacesService:
                 
             except Exception as e:
                 print(f"   ❌ Error fetching {display_name}: {e}")
-                results[display_name] = 0
+                counts[display_name] = 0
+                locations[display_name] = []
         
-        return results
+        return counts, locations
     
     def compare_amenities(
         self,
@@ -143,26 +160,37 @@ class PlacesService:
             return {
                 'current_amenities': {},
                 'destination_amenities': {},
+                'destination_locations': {},  # Empty for same location
+                'destination_lat': destination_lat,
+                'destination_lng': destination_lng,
+                'current_lat': current_lat,
+                'current_lng': current_lng,
                 'destination': {'total_count': 0, 'by_type': {}},
                 'current': {'total_count': 0, 'by_type': {}},
                 'comparison_text': 'Same location - no comparison needed.',
-                'same_location': True
+                'same_location': True,
+                'search_radius': '1 mile'
             }
         
-        # Different locations - search
-        print(f"\n📍 Current location amenities:")
-        current_amenities = self.get_nearby_amenities(current_lat, current_lng, hobbies=hobbies)
+        # Different locations - search with location data
+        print(f"\n🔍 Current location amenities:")
+        current_counts, _ = self.get_nearby_amenities_with_locations(
+            current_lat, current_lng, hobbies=hobbies
+        )
         
-        print(f"\n📍 Destination location amenities:")
-        destination_amenities = self.get_nearby_amenities(destination_lat, destination_lng, hobbies=hobbies)
+        print(f"\n🔍 Destination location amenities:")
+        destination_counts, destination_locations = self.get_nearby_amenities_with_locations(
+            destination_lat, destination_lng, hobbies=hobbies
+        )
         
         # Calculate totals
-        current_total = sum(current_amenities.values())
-        destination_total = sum(destination_amenities.values())
+        current_total = sum(current_counts.values())
+        destination_total = sum(destination_counts.values())
         
-        print(f"\n🔍 Summary:")
+        print(f"\n📊 Summary:")
         print(f"   Current: {current_total} total")
         print(f"   Destination: {destination_total} total")
+        print(f"   Locations stored: {sum(len(v) for v in destination_locations.values())} places")
         
         # Generate comparison text
         if destination_total > current_total:
@@ -171,12 +199,14 @@ class PlacesService:
             
             # Find specific improvements
             improvements = []
-            for amenity, count in destination_amenities.items():
-                if count > current_amenities.get(amenity, 0):
+            for amenity, count in destination_counts.items():
+                if count > current_counts.get(amenity, 0):
                     improvements.append(amenity)
             
             if improvements:
                 comparison_text += f", particularly {', '.join(improvements[:3])}."
+            else:
+                comparison_text += "."
         elif destination_total < current_total:
             percentage_diff = ((current_total - destination_total) / current_total * 100)
             comparison_text = f"The new area has {percentage_diff:.0f}% fewer amenities."
@@ -184,18 +214,24 @@ class PlacesService:
             comparison_text = "Both areas offer similar amenity access."
         
         return {
-            'current_amenities': current_amenities,
-            'destination_amenities': destination_amenities,
+            'current_amenities': current_counts,
+            'destination_amenities': destination_counts,
+            'destination_locations': destination_locations,  # NEW: Full location data for map
+            'destination_lat': destination_lat,
+            'destination_lng': destination_lng,
+            'current_lat': current_lat,
+            'current_lng': current_lng,
             'destination': {
                 'total_count': destination_total,
-                'by_type': destination_amenities
+                'by_type': destination_counts
             },
             'current': {
                 'total_count': current_total,
-                'by_type': current_amenities
+                'by_type': current_counts
             },
             'comparison_text': comparison_text,
-            'same_location': False
+            'same_location': False,
+            'search_radius': '1 mile'
         }
     
     def get_commute_info(
@@ -205,7 +241,23 @@ class PlacesService:
         work_address: str,
         mode: str = "driving"
     ) -> Dict[str, Any]:
-        """Get commute information from new location to work"""
+        """
+        Get commute information from new location to work
+        
+        Args:
+            origin_lat: Latitude of destination address
+            origin_lng: Longitude of destination address
+            work_address: User's work address
+            mode: Travel mode (driving, transit, bicycling, walking)
+        """
+        
+        if not work_address:
+            return {
+                'duration_minutes': None,
+                'distance': 'Unknown',
+                'method': mode,
+                'description': 'No work address provided - commute analysis unavailable.'
+            }
         
         try:
             result = self.client.distance_matrix(
@@ -222,7 +274,7 @@ class PlacesService:
                 return {
                     'duration_minutes': duration,
                     'distance': distance,
-                    'mode': mode,
+                    'method': mode,  # Return the actual method used
                     'description': f"Your commute will be approximately {duration} minutes by {mode}."
                 }
         except Exception as e:
@@ -231,7 +283,7 @@ class PlacesService:
         return {
             'duration_minutes': None,
             'distance': 'Unknown',
-            'mode': mode,
+            'method': mode,
             'description': 'Unable to calculate commute time.'
         }
 

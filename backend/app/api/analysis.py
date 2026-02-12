@@ -364,13 +364,15 @@ def get_user_analyses(
     return analyses
 
 
+# ADD THIS to your analysis.py file - replaces the get_analysis function
+
 @router.get("/{analysis_id}", response_model=AnalysisResponse)
 def get_analysis(
     analysis_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get specific analysis by ID"""
+    """Get specific analysis by ID with proper score formatting for frontend"""
     
     analysis = db.query(Analysis).filter(
         Analysis.id == analysis_id,
@@ -383,7 +385,38 @@ def get_analysis(
             detail="Analysis not found"
         )
     
-    return analysis
+    # IMPORTANT: Transform to frontend-expected format
+    # The frontend expects scores at the top level
+    response_dict = {
+        "id": analysis.id,
+        "current_address": analysis.current_address,
+        "destination_address": analysis.destination_address,
+        
+        # TOP-LEVEL SCORES (Frontend needs these!)
+        "overall_score": analysis.overall_weighted_score or 0,
+        "safety_score": analysis.crime_safety_score or 0,
+        "affordability_score": analysis.cost_affordability_score or 0,
+        "environment_score": analysis.noise_environment_score or 0,
+        "lifestyle_score": analysis.lifestyle_score or 0,
+        "convenience_score": analysis.convenience_score or 0,
+        
+        # DATA OBJECTS
+        "crime_data": analysis.crime_data or {},
+        "cost_data": analysis.cost_data or {},
+        "noise_data": analysis.noise_data or {},
+        "amenities_data": analysis.amenities_data or {},
+        "commute_data": analysis.commute_data or {},
+        
+        # AI INSIGHTS
+        "overview_summary": analysis.overview_summary,
+        "lifestyle_changes": analysis.lifestyle_changes or [],
+        "ai_insights": analysis.ai_insights,
+        
+        # METADATA
+        "created_at": analysis.created_at.isoformat() if analysis.created_at else None
+    }
+    
+    return response_dict
 
 
 @router.delete("/{analysis_id}")
