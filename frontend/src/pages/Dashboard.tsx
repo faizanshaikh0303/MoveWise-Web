@@ -83,7 +83,23 @@ const Dashboard = () => {
       <div className="relative bg-white/80 backdrop-blur-lg border-b border-white/20 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+            <div className="bg-white rounded-xl p-1.5 shadow-sm">
+              <img 
+                src="/logo.png" 
+                alt="MoveWise Logo" 
+                className="w-9 h-9 object-contain"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  e.currentTarget.parentElement?.classList.add('bg-gradient-to-br', 'from-primary', 'to-blue-600');
+                  const fallback = e.currentTarget.parentElement?.nextElementSibling as HTMLElement;
+                  if (fallback) {
+                    fallback.classList.remove('hidden');
+                    fallback.style.display = 'flex';
+                  }
+                }}
+              />
+            </div>
+            <div className="hidden w-12 h-12 bg-gradient-to-br from-primary to-blue-600 rounded-xl items-center justify-center shadow-lg">
               <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -96,7 +112,7 @@ const Dashboard = () => {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate('/profile')}
+              onClick={() => navigate('/profile-settings')}
               className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-white/50 rounded-lg transition-all"
             >
               Profile

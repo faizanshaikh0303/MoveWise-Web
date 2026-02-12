@@ -3,10 +3,12 @@ import { useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { wakeUpBackend } from '@/utils/wakeBackend';
 
-// Pages (we'll create these next)
+// Pages
+import LandingPage from '@/pages/LandingPage';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import ProfileSetup from '@/pages/ProfileSetup';
+import ProfileSettings from '@/pages/ProfileSettings';
 import LocationInput from '@/pages/LocationInput';
 import AnalysisReport from '@/pages/AnalysisReport';
 
@@ -32,8 +34,9 @@ function App() {
       
       <BrowserRouter>
       <Routes>
-        {/* Public route */}
-        <Route path="/" element={<Login />} />
+        {/* Public routes */}
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<Login />} />
 
         {/* Protected routes */}
         <Route
@@ -49,6 +52,14 @@ function App() {
           element={
             <ProtectedRoute>
               <ProfileSetup />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile-settings"
+          element={
+            <ProtectedRoute>
+              <ProfileSettings />
             </ProtectedRoute>
           }
         />
@@ -69,7 +80,7 @@ function App() {
           }
         />
 
-        {/* Catch all - redirect to dashboard if authenticated, login otherwise */}
+        {/* Catch all - redirect to landing page */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
