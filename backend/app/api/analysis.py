@@ -199,27 +199,75 @@ async def create_analysis(
         print(f"✓ Amenities: {amenities_data.get('destination', {}).get('total_count', 0)} places")
         
         # === COMMUTE DATA (Google Maps) ===
-        print("🚗 Calculating commute time...")
-        commute_data = {}
-        if user_profile and user_profile.work_address:
-            work_address = user_profile.work_address
-            commute_preference = user_preferences.get('commute_preference', 'driving')
-            result = places_service.get_commute_info(
-                dest_lat, dest_lng,
-                work_address,
-                commute_preference
-            )
-            if result:
-                commute_data = result
-                print(f"✓ Commute: {commute_data.get('duration_minutes', 0)} minutes")
+        print("🚗 Calculating commute times...")
+        commute_data = None
+        work_address = user_profile.work_address
+        if work_address:
+            try:
+                # Get user's preferred commute method
+                preferred_mode = user_preferences.get('commute_preference', 'driving')
+                
+                print(f"   Preferred method: {preferred_mode}")
+                print(f"   Calculating times for all transportation modes...")
+                
+                # Calculate commute for ALL modes (for alternatives display)
+                all_modes = {}
+                for mode in ['driving', 'transit', 'bicycling', 'walking']:
+                    try:
+                        result = places_service.get_commute_info(
+                            dest_lat, dest_lng,
+                            work_address,
+                            mode=mode
+                        )
+                        all_modes[mode] = {
+                            'duration_minutes': result.get('duration_minutes'),
+                            'distance': result.get('distance')
+                        }
+                        if result.get('duration_minutes'):
+                            print(f"   ✓ {mode}: {result['duration_minutes']} min")
+                    except Exception as e:
+                        print(f"   ⚠️  {mode}: Failed ({e})")
+                        all_modes[mode] = {
+                            'duration_minutes': None,
+                            'distance': None
+                        }
+                
+                # Use the preferred mode as primary
+                primary_commute = places_service.get_commute_info(
+                    dest_lat, dest_lng,
+                    work_address,
+                    mode=preferred_mode
+                )
+                
+                # Build complete commute data
+                commute_data = {
+                    'duration_minutes': primary_commute.get('duration_minutes'),
+                    'distance': primary_commute.get('distance'),
+                    'method': preferred_mode,
+                    'description': primary_commute.get('description'),
+                    'alternatives': all_modes  # Include all mode times
+                }
+                
+                print(f"✓ Primary commute: {commute_data['duration_minutes']} min by {preferred_mode}")
+                
+            except Exception as e:
+                print(f"⚠️  Commute calculation error: {e}")
+                commute_data = {
+                    'duration_minutes': None,
+                    'distance': 'Unknown',
+                    'method': user_preferences.get('commute_preference', 'driving'),
+                    'description': 'Unable to calculate commute time.',
+                    'alternatives': {}
+                }
         else:
-            # Default commute data
+            print(f"✓ Commute: No work address (skipped)")
             commute_data = {
-                'duration_minutes': 25,
-                'distance_miles': 12.0,
-                'method': 'driving'
+                'duration_minutes': None,
+                'distance': 'Unknown',
+                'method': 'driving',
+                'description': 'No work address provided.',
+                'alternatives': {}
             }
-            print(f"✓ Commute: Using default (no work address)")
         
         # 5. Calculate comprehensive scores
         print("🎯 Calculating comprehensive scores...")
@@ -366,13 +414,17 @@ def get_user_analyses(
 
 # ADD THIS to your analysis.py file - replaces the get_analysis function
 
-@router.get("/{analysis_id}", response_model=AnalysisResponse)
+@router.get("/{analysis_id}")
 def get_analysis(
     analysis_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get specific analysis by ID with proper score formatting for frontend"""
+    """
+    Get specific analysis by ID
+    
+    CRITICAL FIX: Returns scores at TOP LEVEL (not nested) for frontend
+    """
     
     analysis = db.query(Analysis).filter(
         Analysis.id == analysis_id,
@@ -385,38 +437,38 @@ def get_analysis(
             detail="Analysis not found"
         )
     
-    # IMPORTANT: Transform to frontend-expected format
-    # The frontend expects scores at the top level
-    response_dict = {
+    # IMPORTANT: Frontend expects scores at root level, not nested
+    response = {
         "id": analysis.id,
         "current_address": analysis.current_address,
         "destination_address": analysis.destination_address,
         
-        # TOP-LEVEL SCORES (Frontend needs these!)
-        "overall_score": analysis.overall_weighted_score or 0,
-        "safety_score": analysis.crime_safety_score or 0,
-        "affordability_score": analysis.cost_affordability_score or 0,
-        "environment_score": analysis.noise_environment_score or 0,
-        "lifestyle_score": analysis.lifestyle_score or 0,
-        "convenience_score": analysis.convenience_score or 0,
+        # ⭐ CRITICAL: Top-level scores (frontend AnalysisResult.jsx needs these!)
+        "overall_score": float(analysis.overall_weighted_score or 0),
+        "safety_score": float(analysis.crime_safety_score or 0),
+        "affordability_score": float(analysis.cost_affordability_score or 0),
+        "environment_score": float(analysis.noise_environment_score or 0),
+        "lifestyle_score": float(analysis.lifestyle_score or 0),
+        "convenience_score": float(analysis.convenience_score or 0),
+        "grade": analysis.overall_grade or "F",
         
-        # DATA OBJECTS
-        "crime_data": analysis.crime_data or {},
-        "cost_data": analysis.cost_data or {},
-        "noise_data": analysis.noise_data or {},
-        "amenities_data": analysis.amenities_data or {},
-        "commute_data": analysis.commute_data or {},
+        # Data objects (with fallbacks)
+        "crime_data": analysis.crime_data if analysis.crime_data else {},
+        "cost_data": analysis.cost_data if analysis.cost_data else {},
+        "noise_data": analysis.noise_data if analysis.noise_data else {},
+        "amenities_data": analysis.amenities_data if analysis.amenities_data else {},
+        "commute_data": analysis.commute_data if analysis.commute_data else {},
         
-        # AI INSIGHTS
-        "overview_summary": analysis.overview_summary,
-        "lifestyle_changes": analysis.lifestyle_changes or [],
-        "ai_insights": analysis.ai_insights,
+        # AI insights
+        "overview_summary": analysis.overview_summary or "Analysis complete.",
+        "lifestyle_changes": analysis.lifestyle_changes if analysis.lifestyle_changes else [],
+        "ai_insights": analysis.ai_insights or "",
         
-        # METADATA
+        # Metadata
         "created_at": analysis.created_at.isoformat() if analysis.created_at else None
     }
     
-    return response_dict
+    return response
 
 
 @router.delete("/{analysis_id}")
