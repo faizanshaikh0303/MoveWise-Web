@@ -177,8 +177,9 @@ const CrimeTab = ({ data }) => {
               onChange={(e) => setSelectedLocation(e.target.value)}
               className="text-sm border border-gray-300 rounded-lg px-3 py-1.5"
             >
-              <option value="current">Current</option>
               <option value="destination">Destination</option>
+              <option value="current">Current</option>
+              
             </select>
           </div>
           <ResponsiveContainer width="100%" height={200}>

@@ -7,25 +7,29 @@ interface NoiseData {
     estimated_db?: number;
     noise_category?: string;
     noise_score?: number;
-    road_breakdown?: Record<string, number>;
-    dominant_noise_source?: string;
+    noise_sources?: {
+      sources?: Record<string, number>;
+      dominant_source?: string;
+    };
   };
   destination?: {
     estimated_db?: number;
     noise_category?: string;
     noise_score?: number;
-    road_breakdown?: Record<string, number>;
-    dominant_noise_source?: string;
-    recommendations?: string[];
+    noise_sources?: {
+      sources?: Record<string, number>;
+      dominant_source?: string;
+    };
+    preference_match?: {
+      is_good_match?: boolean;
+      quality?: string;
+    };
   };
   comparison?: {
     db_difference?: number;
     category_change?: string;
     is_quieter?: boolean;
     recommendation?: string;
-    preference_match?: {
-      is_good_match?: boolean;
-    };
   };
 }
 
@@ -59,6 +63,9 @@ const NoiseTab: React.FC<NoiseTabProps> = ({ data }) => {
   const NoiseIcon = getNoiseIcon(destination.estimated_db);
 
   const noiseScore = destination.noise_score || 0;
+  
+  // Check if user's preference matches
+  const preferenceMatch = destination.preference_match?.is_good_match || false;
 
   return (
     <div className="space-y-6">
@@ -204,101 +211,27 @@ const NoiseTab: React.FC<NoiseTabProps> = ({ data }) => {
         </div>
       </motion.div>
 
-      {/* Road Breakdown */}
-      <div className="grid grid-cols-2 gap-6">
+      {/* Preference Match Card */}
+      {preferenceMatch && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
+          className="bg-green-50 border-green-200 rounded-xl p-6 border-2"
         >
-          <h3 className="text-lg font-bold text-gray-900 mb-4">Current Location Sources</h3>
-          <div className="space-y-3">
-            {Object.entries(current.road_breakdown || {}).map(([type, count]) => (
-              <div key={type} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="text-sm text-gray-700 capitalize">{type} roads</span>
-                <span className="text-lg font-bold text-gray-900">{count}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Dominant source:</span>
-              <span className="font-semibold text-gray-900 capitalize">{current.dominant_noise_source || 'Unknown'}</span>
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+              <Volume2 className="h-5 w-5 text-white" />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-semibold text-gray-900 mb-1">Perfect Match</h4>
+              <p className="text-sm text-gray-700">
+                This noise level matches your preference for a {destination.preference_match?.quality || 'lively'} environment.
+              </p>
             </div>
           </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
-        >
-          <h3 className="text-lg font-bold text-gray-900 mb-4">New Location Sources</h3>
-          <div className="space-y-3">
-            {Object.entries(destination.road_breakdown || {}).map(([type, count]) => (
-              <div key={type} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="text-sm text-gray-700 capitalize">{type} roads</span>
-                <span className="text-lg font-bold text-gray-900">{count}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Dominant source:</span>
-              <span className="font-semibold text-gray-900 capitalize">{destination.dominant_noise_source || 'Unknown'}</span>
-            </div>
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Recommendations */}
-      {destination.recommendations && destination.recommendations.length > 0 ? (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          className="bg-blue-50 border-blue-200 rounded-xl p-6 border-2"
-        >
-          <h4 className="font-semibold text-gray-900 mb-3">Recommendations</h4>
-          <ul className="space-y-2">
-            {destination.recommendations.map((rec, idx) => (
-              <li key={idx} className="text-sm text-gray-700 flex items-start">
-                <span className="text-blue-500 mr-2">•</span>
-                {rec}
-              </li>
-            ))}
-          </ul>
-        </motion.div>
-      ) : (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          className="bg-gray-50 border-gray-200 rounded-xl p-6 border-2"
-        >
-          <p className="text-gray-600 text-center">
-            {comparison.is_quieter 
-              ? "✅ This location is quieter than your current area."
-              : "The noise level is similar to your current location."}
-          </p>
         </motion.div>
       )}
-
-      {/* Preference Match */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.7 }}
-        className={`${
-          comparison.preference_match?.is_good_match 
-            ? 'bg-green-50 border-green-200' 
-            : 'bg-yellow-50 border-yellow-200'
-        } rounded-xl p-6 border-2`}
-      >
-        <p className="text-gray-700">{comparison.recommendation || 'Noise analysis complete.'}</p>
-      </motion.div>
     </div>
   );
 };
