@@ -152,23 +152,60 @@ async def create_analysis(
             )
         
         # === NOISE DATA (OpenStreetMap) ===
-        print("🔊 Analyzing noise environment...")
-        try:
-            noise_data = google_noise_service.compare_noise_levels(
-                current_lat, current_lng,
-                dest_lat, dest_lng,
-                user_preferences.get('noise_preference', 'moderate')
-            )
-            print(f"✓ Noise: {noise_data['destination']['estimated_db']:.1f} dB")
-            print(f"  Category: {noise_data['destination']['noise_category']}")
-        except Exception as e:
-            print(f"⚠️  Google Noise error (using fallback): {e}")
-            # Fallback to old service
-            noise_data = noise_service.compare_noise_levels(
-                request.current_address,
-                request.destination_address,
-                user_preferences.get('noise_preference')
-            )
+        print("🔊 Analyzing noise levels...")
+        
+        # Get user's noise preference (NEW!)
+        user_noise_pref = user_preferences.get('noise_preference', 'moderate')
+        print(f"   User noise preference: {user_noise_pref}")
+        
+        # Analyze current location WITH preference
+        noise_data_current = noise_service.estimate_noise_level(
+            current_address,
+            user_preference=user_noise_pref  # ← PASS PREFERENCE
+        )
+        
+        # Analyze destination WITH preference
+        noise_data_dest = noise_service.estimate_noise_level(
+            destination_address,
+            user_preference=user_noise_pref  # ← PASS PREFERENCE
+        )
+        
+        # Compare WITH preference
+        noise_comparison = noise_service.compare_noise_levels(
+            current_address,
+            destination_address,
+            sleep_preference=user_preferences.get('sleep_schedule'),
+            user_preference=user_noise_pref  # ← PASS PREFERENCE
+        )
+        
+        print(f"   Current: {noise_data_current['score']:.1f} dB → Score: {noise_data_current['noise_score']}/100")
+        print(f"   Destination: {noise_data_dest['score']:.1f} dB → Score: {noise_data_dest['noise_score']}/100")
+        
+        # Build noise data object
+        noise_data = {
+            'current': {
+                'estimated_db': noise_data_current['score'],
+                'noise_category': noise_data_current['noise_category'],
+                'noise_score': noise_data_current['noise_score'],  # Preference-aware score
+                'description': noise_data_current['description']
+            },
+            'destination': {
+                'estimated_db': noise_data_dest['score'],
+                'noise_category': noise_data_dest['noise_category'],
+                'noise_score': noise_data_dest['noise_score'],  # Preference-aware score
+                'description': noise_data_dest['description'],
+                'preference_match': noise_data_dest['preference_match']  # NEW!
+            },
+            'comparison': {
+                'db_difference': noise_comparison['db_difference'],
+                'score_difference': noise_comparison['score_difference'],
+                'is_quieter': noise_comparison['db_difference'] < 0,
+                'category_change': f"{noise_data_current['noise_category']} → {noise_data_dest['noise_category']}",
+                'recommendation': noise_comparison['analysis']
+            }
+        }
+        
+        print(f"✓ Noise analysis complete")
         
         # === COST DATA (US Census Bureau - FREE!) ===
         print("💰 Calculating cost of living (US Census Bureau)...")
