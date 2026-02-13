@@ -45,19 +45,64 @@ export interface ProfileData {
   hobbies?: string[];
 }
 
-// Analysis types
+// Analysis types - UPDATED for new components
+
 export interface AnalysisRequest {
   current_address: string;
   destination_address: string;
 }
 
+// Crime Data - Enhanced
 export interface CrimeData {
-  current_crime_rate: number;
-  destination_crime_rate: number;
-  comparison: string;
-  data_source: string;
+  current: {
+    total_crimes: number;
+    daily_average: number;
+    crime_rate: number;
+    safety_score: number;
+    categories?: {
+      violent?: number;
+      property?: number;
+      theft?: number;
+      vandalism?: number;
+    };
+    temporal_analysis?: {
+      hourly_distribution?: number[];
+      peak_hours?: string[];
+      crimes_during_sleep_hours?: number;
+      crimes_during_work_hours?: number;
+      crimes_during_commute?: number;
+    };
+    data_source?: string;
+  };
+  destination: {
+    total_crimes: number;
+    daily_average: number;
+    crime_rate: number;
+    safety_score: number;
+    categories?: {
+      violent?: number;
+      property?: number;
+      theft?: number;
+      vandalism?: number;
+    };
+    temporal_analysis?: {
+      hourly_distribution?: number[];
+      peak_hours?: string[];
+      crimes_during_sleep_hours?: number;
+      crimes_during_work_hours?: number;
+      crimes_during_commute?: number;
+    };
+    data_source?: string;
+  };
+  comparison: {
+    crime_change_percent: number;
+    is_safer: boolean;
+    score_difference: number;
+    recommendation: string;
+  };
 }
 
+// Amenities Data - Enhanced
 export interface AmenitiesData {
   current_amenities: Record<string, number>;
   destination_amenities: Record<string, number>;
@@ -70,38 +115,105 @@ export interface AmenitiesData {
   }>>;
   destination_lat: number;
   destination_lng: number;
+  current_lat?: number;
+  current_lng?: number;
+  destination: {
+    total_count: number;
+    by_type: Record<string, number>;
+  };
+  current: {
+    total_count: number;
+    by_type: Record<string, number>;
+  };
   comparison_text: string;
   search_radius?: string;
   note?: string;
+  same_location?: boolean;
 }
 
+// Cost Data - Enhanced
 export interface CostData {
-  current_cost: number;
-  destination_cost: number;
-  change_percentage: number;
-  monthly_difference: number;
-  annual_difference: number;
-  current_breakdown: Record<string, number>;
-  destination_breakdown: Record<string, number>;
-  tip: string;
-  data_source: string;
+  current: {
+    total_monthly: number;
+    total_annual: number;
+    affordability_score: number;
+    housing?: {
+      monthly_rent: number;
+    };
+    expenses?: {
+      utilities: number;
+      groceries: number;
+      transportation: number;
+      healthcare: number;
+      entertainment: number;
+      miscellaneous: number;
+    };
+    cost_index?: number;
+    data_source?: string;
+  };
+  destination: {
+    total_monthly: number;
+    total_annual: number;
+    affordability_score: number;
+    housing?: {
+      monthly_rent: number;
+    };
+    expenses?: {
+      utilities: number;
+      groceries: number;
+      transportation: number;
+      healthcare: number;
+      entertainment: number;
+      miscellaneous: number;
+    };
+    cost_index?: number;
+    data_source?: string;
+  };
+  comparison: {
+    monthly_difference: number;
+    annual_difference: number;
+    percent_change: number;
+    is_more_expensive: boolean;
+    score_difference: number;
+    recommendation: string;
+  };
 }
 
+// Noise Data - Enhanced
 export interface NoiseData {
-  current_noise_level: string;
-  current_score: number;
-  current_description: string;
-  current_indicators: string[];
-  destination_noise_level: string;
-  destination_score: number;
-  destination_description: string;
-  destination_indicators: string[];
-  score_difference: number;
-  impact: string;
-  analysis: string;
-  data_source: string;
+  current: {
+    estimated_db: number;
+    noise_score: number;
+    noise_category: string;
+    description?: string;
+    road_breakdown?: Record<string, number>;
+    dominant_noise_source?: string;
+    indicators?: string[];
+  };
+  destination: {
+    estimated_db: number;
+    noise_score: number;
+    noise_category: string;
+    description?: string;
+    road_breakdown?: Record<string, number>;
+    dominant_noise_source?: string;
+    indicators?: string[];
+    recommendations?: string[];
+  };
+  comparison: {
+    db_difference: number;
+    is_quieter: boolean;
+    category_change: string;
+    score_difference: number;
+    recommendation: string;
+    preference_match?: {
+      is_good_match: boolean;
+      reason?: string;
+    };
+  };
 }
 
+// Commute Data - Enhanced
 export interface CommuteData {
   duration_minutes?: number;
   method?: string;
@@ -109,18 +221,32 @@ export interface CommuteData {
   description?: string;
 }
 
+// Full Analysis - Enhanced
 export interface Analysis {
   id: number;
   current_address: string;
   destination_address: string;
+  
+  // Scores
+  overall_score: number;
+  safety_score: number;
+  affordability_score: number;
+  environment_score: number;
+  lifestyle_score: number;
+  convenience_score: number;
+  
+  // Data sections
   crime_data: CrimeData | null;
   amenities_data: AmenitiesData | null;
   cost_data: CostData | null;
   noise_data: NoiseData | null;
   commute_data: CommuteData | null;
+  
+  // AI insights
   overview_summary: string | null;
   lifestyle_changes: string[] | null;
   ai_insights: string | null;
+  
   created_at: string;
 }
 

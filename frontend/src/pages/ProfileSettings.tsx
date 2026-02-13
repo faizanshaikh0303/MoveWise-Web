@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { profileAPI, authAPI } from '../services/api';
-import { useAuthStore } from '../stores/authStore';
+import { useAuthStore } from '../stores/authStore.ts';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 
 const ProfileSettings = () => {
