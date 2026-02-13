@@ -160,20 +160,20 @@ async def create_analysis(
         
         # Analyze current location WITH preference
         noise_data_current = noise_service.estimate_noise_level(
-            current_address,
+            request.current_address,
             user_preference=user_noise_pref  # ← PASS PREFERENCE
         )
         
         # Analyze destination WITH preference
         noise_data_dest = noise_service.estimate_noise_level(
-            destination_address,
+            request.destination_address,
             user_preference=user_noise_pref  # ← PASS PREFERENCE
         )
         
         # Compare WITH preference
         noise_comparison = noise_service.compare_noise_levels(
-            current_address,
-            destination_address,
+            request.current_address,
+            request.destination_address,
             sleep_preference=user_preferences.get('sleep_schedule'),
             user_preference=user_noise_pref  # ← PASS PREFERENCE
         )
