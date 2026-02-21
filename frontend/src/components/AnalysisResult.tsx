@@ -1,15 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Shield, 
-  DollarSign, 
-  Volume2, 
-  MapPin, 
+import React, { useState } from 'react';
+import {
+  Shield,
+  DollarSign,
+  Volume2,
+  MapPin,
   Clock,
   ChevronRight,
-  AlertCircle,
-  CheckCircle,
   Home,
   Building
 } from 'lucide-react';
@@ -29,40 +25,14 @@ interface AnalysisResultProps {
 
 const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis, onBack }) => {
   const [activeTab, setActiveTab] = useState('overview');
-  const [showScoreAnimation, setShowScoreAnimation] = useState(true);
-
-  useEffect(() => {
-    // Trigger score animation on mount
-    const timer = setTimeout(() => setShowScoreAnimation(false), 2000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const getGrade = (score: number) => {
-    if (score >= 90) return { grade: 'A+', color: 'text-green-600', bgColor: 'bg-green-50', borderColor: 'border-green-200' };
-    if (score >= 80) return { grade: 'A', color: 'text-green-500', bgColor: 'bg-green-50', borderColor: 'border-green-200' };
-    if (score >= 70) return { grade: 'B', color: 'text-blue-500', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' };
-    if (score >= 60) return { grade: 'C', color: 'text-yellow-500', bgColor: 'bg-yellow-50', borderColor: 'border-yellow-200' };
-    if (score >= 50) return { grade: 'D', color: 'text-orange-500', bgColor: 'bg-orange-50', borderColor: 'border-orange-200' };
-    return { grade: 'F', color: 'text-red-500', bgColor: 'bg-red-50', borderColor: 'border-red-200' };
-  };
-
-  const gradeInfo = getGrade(analysis.overall_score || 0);
-
-  const scores = {
-    safety: analysis.safety_score || 0,
-    affordability: analysis.affordability_score || 0,
-    environment: analysis.environment_score || 0,
-    lifestyle: analysis.lifestyle_score || 0,
-    convenience: analysis.convenience_score || 0
-  };
 
   const tabs = [
-    { id: 'overview',   label: 'Overview',  icon: Home,       score: null },
-    { id: 'crime',      label: 'Safety',    icon: Shield,     score: scores.safety },
-    { id: 'cost',       label: 'Cost',      icon: DollarSign, score: scores.affordability },
-    { id: 'noise',      label: 'Noise',     icon: Volume2,    score: scores.environment },
-    { id: 'amenities',  label: 'Lifestyle', icon: Building,   score: scores.lifestyle },
-    { id: 'commute',    label: 'Commute',   icon: Clock,      score: scores.convenience },
+    { id: 'overview',  label: 'Overview',  icon: Home },
+    { id: 'crime',     label: 'Safety',    icon: Shield },
+    { id: 'cost',      label: 'Cost',      icon: DollarSign },
+    { id: 'noise',     label: 'Noise',     icon: Volume2 },
+    { id: 'amenities', label: 'Lifestyle', icon: Building },
+    { id: 'commute',   label: 'Commute',   icon: Clock },
   ];
 
   return (
@@ -96,79 +66,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis, onBack }) => 
               </div>
             </div>
 
-            {/* Overall Score Card */}
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.2 }}
-              className={`${gradeInfo.bgColor} ${gradeInfo.borderColor} border-2 rounded-2xl p-6 min-w-[200px]`}
-            >
-              <div className="text-center">
-                <div className="text-sm font-medium text-gray-600 mb-2">Overall Score</div>
-                <AnimatePresence>
-                  {showScoreAnimation ? (
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1, rotate: 360 }}
-                      exit={{ scale: 0 }}
-                      transition={{ type: "spring", stiffness: 260, damping: 20 }}
-                      className={`text-5xl font-bold ${gradeInfo.color}`}
-                    >
-                      {Math.round(analysis.overall_score || 0)}
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="flex items-baseline justify-center"
-                    >
-                      <span className={`text-5xl font-bold ${gradeInfo.color}`}>
-                        {Math.round(analysis.overall_score || 0)}
-                      </span>
-                      <span className="text-2xl text-gray-400 ml-1">/100</span>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-                <div className={`text-xl font-semibold ${gradeInfo.color} mt-2`}>
-                  Grade: {gradeInfo.grade}
-                </div>
-              </div>
-            </motion.div>
           </div>
-
-          {/* Score Breakdown Mini Cards */}
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="grid grid-cols-5 gap-3 mt-6"
-          >
-            {Object.entries(scores).map(([key, value], idx) => (
-              <motion.div
-                key={key}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 + idx * 0.1 }}
-                className="bg-white rounded-lg p-3 shadow-sm border border-gray-200"
-              >
-                <div className="text-xs text-gray-500 capitalize mb-1">{key}</div>
-                <div className="flex items-baseline">
-                  <span className="text-2xl font-bold text-gray-900">{Math.round(value)}</span>
-                  <span className="text-sm text-gray-400 ml-1">/100</span>
-                </div>
-                <div className="mt-2 bg-gray-200 rounded-full h-1.5">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${value}%` }}
-                    transition={{ delay: 0.5 + idx * 0.1, duration: 0.8 }}
-                    className={`h-1.5 rounded-full ${
-                      value >= 70 ? 'bg-green-500' : value >= 50 ? 'bg-yellow-500' : 'bg-red-500'
-                    }`}
-                  />
-                </div>
-              </motion.div>
-            ))}
-          </motion.div>
         </div>
       </motion.div>
 
@@ -179,30 +77,20 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis, onBack }) => 
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
-              const scoreColor = tab.score !== null
-                ? tab.score >= 70 ? 'text-green-600' : tab.score >= 50 ? 'text-yellow-600' : 'text-red-600'
-                : '';
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`
-                    relative flex-shrink-0 flex flex-col items-center gap-1 px-5 py-3 rounded-xl text-sm font-semibold transition-all duration-200
+                    relative flex-shrink-0 flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all duration-200
                     ${isActive
                       ? 'bg-blue-600 text-white shadow-lg scale-105'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-900'
                     }
                   `}
                 >
-                  <div className="flex items-center gap-2">
-                    <Icon className="h-4 w-4" />
-                    <span>{tab.label}</span>
-                  </div>
-                  {tab.score !== null && (
-                    <span className={`text-xs font-bold ${isActive ? 'text-blue-100' : scoreColor}`}>
-                      {Math.round(tab.score)}/100
-                    </span>
-                  )}
+                  <Icon className="h-4 w-4" />
+                  <span>{tab.label}</span>
                 </button>
               );
             })}

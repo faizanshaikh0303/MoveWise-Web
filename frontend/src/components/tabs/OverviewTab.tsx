@@ -316,7 +316,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ analysis }) => {
                 <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
                   <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                 </div>
-                <p className="text-sm text-gray-700 leading-relaxed">{change}</p>
+                <p className="text-sm text-gray-700 leading-relaxed">{change.replace(/^[✓√✔]\s*/, '')}</p>
               </motion.div>
             ))}
           </div>
