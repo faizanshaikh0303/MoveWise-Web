@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { profileAPI } from '../services/api';
+import { useAuthStore } from '../stores/authStore';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 
 const ProfileSetup = () => {
   const navigate = useNavigate();
+  const fetchUser = useAuthStore((state) => state.fetchUser);
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -149,7 +151,8 @@ const ProfileSetup = () => {
       console.log('Submitting profile:', profileData);
       
       await profileAPI.createOrUpdate(profileData);
-      
+      await fetchUser();
+
       console.log('Profile created successfully, navigating to dashboard...');
       navigate('/dashboard', { replace: true });
     } catch (err: any) {
