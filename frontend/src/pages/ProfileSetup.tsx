@@ -195,27 +195,43 @@ const ProfileSetup = () => {
         </div>
 
         {/* Progress Steps */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            {[1, 2, 3].map((s) => (
-              <div key={s} className="flex items-center flex-1">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
-                  step >= s ? 'bg-primary text-white' : 'bg-gray-200 text-gray-600'
-                }`}>
-                  {s}
-                </div>
-                {s < 3 && (
-                  <div className={`flex-1 h-1 mx-2 ${
-                    step > s ? 'bg-primary' : 'bg-gray-200'
-                  }`} />
-                )}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-between mb-2 space-x-10">
+            {/* Step 1 */}
+            <div className="flex items-center">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                step >= 1 ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
+              }`}>
+                1
               </div>
-            ))}
-          </div>
-          <div className="flex justify-between mt-2">
-            <span className="text-sm text-gray-600">Work</span>
-            <span className="text-sm text-gray-600">Sleep</span>
-            <span className="text-sm text-gray-600">Hobbies</span>
+              <span className="ml-2 text-sm font-medium">Work</span>
+            </div>
+            
+            {/* Connector Line */}
+            <div className="flex-1 h-0.5 bg-gray-300 mx-4" />
+            
+            {/* Step 2 */}
+            <div className="flex items-center">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                step >= 2 ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
+              }`}>
+                2
+              </div>
+              <span className="ml-2 text-sm font-medium">Sleep</span>
+            </div>
+            
+            {/* Connector Line */}
+            <div className="flex-1 h-0.5 bg-gray-300 mx-4" />
+            
+            {/* Step 3 */}
+            <div className="flex items-center">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                step >= 3 ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
+              }`}>
+                3
+              </div>
+              <span className="ml-2 text-sm font-medium">Hobbies</span>
+            </div>
           </div>
         </div>
 

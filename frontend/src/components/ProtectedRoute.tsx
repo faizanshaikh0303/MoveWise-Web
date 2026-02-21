@@ -3,13 +3,18 @@ import { useAuthStore } from '@/stores/authStore';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
+  requiresProfile?: boolean;
 }
 
-const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+const ProtectedRoute = ({ children, requiresProfile = false }: ProtectedRouteProps) => {
+  const { isAuthenticated, user } = useAuthStore();
 
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;
+  }
+
+  if (requiresProfile && !user?.profile_setup_complete) {
+    return <Navigate to="/profile-setup" replace />;
   }
 
   return <>{children}</>;

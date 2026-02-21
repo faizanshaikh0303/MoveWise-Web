@@ -20,6 +20,7 @@ class UserLogin(BaseModel):
 class UserResponse(UserBase):
     id: int
     created_at: datetime
+    profile_setup_complete: bool = False
 
     class Config:
         from_attributes = True

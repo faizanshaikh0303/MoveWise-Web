@@ -17,3 +17,8 @@ class User(Base):
     # Relationships
     profiles = relationship("UserProfile", back_populates="user", cascade="all, delete-orphan")
     analyses = relationship("Analysis", back_populates="user", cascade="all, delete-orphan")
+
+    @property
+    def profile_setup_complete(self) -> bool:
+        """True if the user has completed profile setup."""
+        return len(self.profiles) > 0

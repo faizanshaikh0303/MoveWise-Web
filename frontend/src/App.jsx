@@ -42,7 +42,7 @@ function App() {
           <Route
             path="/dashboard"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requiresProfile>
                 <Dashboard />
               </ProtectedRoute>
             }
@@ -66,7 +66,7 @@ function App() {
           <Route
             path="/new-analysis"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requiresProfile>
                 <LocationInput />
               </ProtectedRoute>
             }
@@ -74,7 +74,7 @@ function App() {
           <Route
             path="/analysis/:id"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requiresProfile>
                 <AnalysisDetailPage />
               </ProtectedRoute>
             }

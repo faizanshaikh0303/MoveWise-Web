@@ -4,6 +4,7 @@ export interface User {
   email: string;
   name: string | null;
   created_at: string;
+  profile_setup_complete: boolean;
 }
 
 export interface LoginCredentials {
