@@ -239,7 +239,12 @@ async def create_analysis(
         print("🚗 Calculating commute times...")
         commute_data = None
         work_address = user_profile.work_address
-        if work_address:
+        is_work_from_home = (
+            not work_address or
+            work_address.strip().lower() == 'work from home' or
+            user_profile.commute_preference == 'none'
+        )
+        if not is_work_from_home and work_address:
             try:
                 # Get user's preferred commute method
                 preferred_mode = user_preferences.get('commute_preference', 'driving')
@@ -296,6 +301,15 @@ async def create_analysis(
                     'description': 'Unable to calculate commute time.',
                     'alternatives': {}
                 }
+        elif is_work_from_home:
+            print(f"✓ Commute: Work from home (skipped)")
+            commute_data = {
+                'duration_minutes': 0,
+                'distance': '0 km',
+                'method': 'none',
+                'description': 'You work from home — no commute needed!',
+                'alternatives': {}
+            }
         else:
             print(f"✓ Commute: No work address (skipped)")
             commute_data = {

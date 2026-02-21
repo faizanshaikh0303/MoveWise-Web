@@ -163,7 +163,11 @@ class ScoringService:
         """
         if not commute_data:
             return 70
-        
+
+        # Work from home: perfect convenience score
+        if commute_data.get('method') == 'none' or commute_data.get('duration_minutes') == 0:
+            return 100.0
+
         duration_minutes = commute_data.get('duration_minutes', 30)
         
         # Ideal commute: 20 minutes or less = 100 points

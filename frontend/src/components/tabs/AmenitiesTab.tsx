@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  MapPin, 
-  Coffee, 
-  ShoppingBag, 
-  Film, 
+import {
+  MapPin,
+  Coffee,
+  ShoppingBag,
+  Film,
   Dumbbell,
   UtensilsCrossed,
   Heart,
   Building,
   Store,
-  GraduationCap
+  GraduationCap,
+  BookOpen,
+  Trophy,
+  Mountain
 } from 'lucide-react';
-import { GoogleMap, LoadScript, Marker, InfoWindow } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
 
 // Define marker type
 interface MarkerType {
@@ -26,6 +29,11 @@ interface MarkerType {
 }
 
 const AmenitiesTab = ({ data }: any) => {
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+  });
+
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedMarker, setSelectedMarker] = useState<MarkerType | null>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -49,7 +57,10 @@ const AmenitiesTab = ({ data }: any) => {
     'hospitals': { icon: Heart, color: '#ef4444', markerColor: '#ef4444' },
     'pharmacies': { icon: Building, color: '#06b6d4', markerColor: '#06b6d4' },
     'parks': { icon: MapPin, color: '#22c55e', markerColor: '#22c55e' },
-    'schools': { icon: GraduationCap, color: '#6366f1', markerColor: '#6366f1' }
+    'schools': { icon: GraduationCap, color: '#6366f1', markerColor: '#6366f1' },
+    'libraries': { icon: BookOpen, color: '#7c3aed', markerColor: '#7c3aed' },
+    'hiking trails': { icon: Mountain, color: '#15803d', markerColor: '#15803d' },
+    'stadiums': { icon: Trophy, color: '#b45309', markerColor: '#b45309' }
   };
 
   // Get all markers for the map - with proper typing
@@ -225,7 +236,7 @@ const AmenitiesTab = ({ data }: any) => {
           )}
         </h3>
         
-        <LoadScript googleMapsApiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}>
+        {isLoaded ? (
           <GoogleMap
             mapContainerStyle={mapContainerStyle}
             center={center}
@@ -233,11 +244,11 @@ const AmenitiesTab = ({ data }: any) => {
             options={mapOptions}
             onLoad={(mapInstance) => setMap(mapInstance)}
           >
-            {/* Destination marker (home icon) */}
+            {/* Destination marker */}
             <Marker
               position={center}
               icon={{
-                path: window.google?.maps?.SymbolPath?.CIRCLE,
+                path: window.google.maps.SymbolPath.CIRCLE,
                 scale: 10,
                 fillColor: '#3b82f6',
                 fillOpacity: 1,
@@ -254,7 +265,7 @@ const AmenitiesTab = ({ data }: any) => {
                 position={{ lat: marker.lat, lng: marker.lng }}
                 onClick={() => setSelectedMarker(marker)}
                 icon={{
-                  path: window.google?.maps?.SymbolPath?.CIRCLE,
+                  path: window.google.maps.SymbolPath.CIRCLE,
                   scale: 6,
                   fillColor: marker.color,
                   fillOpacity: 0.8,
@@ -278,7 +289,14 @@ const AmenitiesTab = ({ data }: any) => {
               </InfoWindow>
             )}
           </GoogleMap>
-        </LoadScript>
+        ) : (
+          <div className="flex items-center justify-center h-96 bg-gray-50 rounded-xl">
+            <div className="text-center text-gray-500">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-3"></div>
+              <p className="text-sm">Loading map...</p>
+            </div>
+          </div>
+        )}
       </motion.div>
 
       {/* Comparison Grid */}

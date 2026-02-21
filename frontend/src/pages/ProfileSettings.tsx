@@ -15,6 +15,8 @@ const ProfileSettings = () => {
   const [hasChanges, setHasChanges] = useState(false);
   const [originalData, setOriginalData] = useState<any>(null);
   
+  const [workFromHome, setWorkFromHome] = useState(false);
+
   // Profile form
   const [profileData, setProfileData] = useState({
     work_hours_start: '',
@@ -46,17 +48,20 @@ const ProfileSettings = () => {
         const workHours = profile.work_hours?.split(' - ') || ['', ''];
         const sleepHours = profile.sleep_hours?.split(' - ') || ['', ''];
         
+        const isWFH = profile.commute_preference === 'none' || profile.work_address === 'Work from Home';
+        setWorkFromHome(isWFH);
+
         const data = {
           work_hours_start: workHours[0] || '',
           work_hours_end: workHours[1] || '',
-          work_address: profile.work_address || '',
-          commute_preference: profile.commute_preference || 'driving',
+          work_address: isWFH ? '' : (profile.work_address || ''),
+          commute_preference: isWFH ? 'driving' : (profile.commute_preference || 'driving'),
           sleep_hours_start: sleepHours[0] || '',
           sleep_hours_end: sleepHours[1] || '',
           noise_preference: profile.noise_preference || 'quiet',
           hobbies: profile.hobbies || [],
         };
-        
+
         setProfileData(data);
         setOriginalData(JSON.parse(JSON.stringify(data))); // Deep copy
       }
@@ -86,8 +91,8 @@ const ProfileSettings = () => {
       
       await profileAPI.update({
         work_hours,
-        work_address: profileData.work_address,
-        commute_preference: profileData.commute_preference,
+        work_address: workFromHome ? 'Work from Home' : profileData.work_address,
+        commute_preference: workFromHome ? 'none' : profileData.commute_preference,
         sleep_hours,
         noise_preference: profileData.noise_preference,
         hobbies: profileData.hobbies.length > 0 ? profileData.hobbies : undefined,
@@ -277,37 +282,60 @@ const ProfileSettings = () => {
                   </div>
                 </div>
 
-                <div className="mb-4">
-                  <AddressAutocomplete
-                    label="Work Address"
-                    value={profileData.work_address}
-                    onChange={(value) => setProfileData({ ...profileData, work_address: value })}
-                    placeholder="e.g., 123 Main St, San Francisco, CA"
-                    icon="current"
+                {/* Work from Home toggle */}
+                <div className="mb-4 flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="wfh-checkbox"
+                    checked={workFromHome}
+                    onChange={(e) => {
+                      setWorkFromHome(e.target.checked);
+                      if (e.target.checked) {
+                        setProfileData({ ...profileData, work_address: '', commute_preference: 'driving' });
+                      }
+                    }}
+                    className="w-4 h-4 text-primary border-gray-300 rounded"
                   />
+                  <label htmlFor="wfh-checkbox" className="text-sm font-medium text-gray-700 cursor-pointer">
+                    I work from home
+                  </label>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Commute Preference
-                  </label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {['driving', 'transit', 'bicycling', 'walking'].map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => setProfileData({ ...profileData, commute_preference: mode })}
-                        className={`p-2 rounded-lg border-2 text-sm transition-all ${
-                          profileData.commute_preference === mode
-                            ? 'border-primary bg-primary/5 text-primary font-medium'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                {!workFromHome && (
+                  <>
+                    <div className="mb-4">
+                      <AddressAutocomplete
+                        label="Work Address"
+                        value={profileData.work_address}
+                        onChange={(value) => setProfileData({ ...profileData, work_address: value })}
+                        placeholder="e.g., 123 Main St, San Francisco, CA"
+                        icon="current"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Commute Preference
+                      </label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {['driving', 'transit', 'bicycling', 'walking'].map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setProfileData({ ...profileData, commute_preference: mode })}
+                            className={`p-2 rounded-lg border-2 text-sm transition-all ${
+                              profileData.commute_preference === mode
+                                ? 'border-primary bg-primary/5 text-primary font-medium'
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                          >
+                            {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               <hr />

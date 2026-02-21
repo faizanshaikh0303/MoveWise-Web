@@ -37,72 +37,88 @@ class PlacesService:
             - locations_dict: {category: [{"name": "", "lat": 0, "lng": 0, "address": ""}]}
         """
         
-        # Map hobbies to Google Places types
+        # Map hobbies to Google Places search params.
+        # Each entry: (search_method, value, display_name)
+        # search_method is 'type' (exact place type) or 'keyword' (free-text search)
         hobby_to_place_type = {
-            'coffee': ('cafe', 'cafes'),
-            'cafes': ('cafe', 'cafes'),
-            'movies': ('movie_theater', 'movie theaters'),
-            'cinema': ('movie_theater', 'movie theaters'),
-            'shopping': ('shopping_mall', 'shopping malls'),
-            'gym': ('gym', 'gyms'),
-            'fitness': ('gym', 'gyms'),
-            'workout': ('gym', 'gyms'),
-            'bars': ('bar', 'bars'),
-            'nightlife': ('bar', 'bars'),
-            'restaurants': ('restaurant', 'restaurants'),
-            'dining': ('restaurant', 'restaurants'),
-            'food': ('restaurant', 'restaurants'),
-            'parks': ('park', 'parks'),
-            'outdoors': ('park', 'parks'),
-            'nature': ('park', 'parks'),
-            'reading': ('library', 'libraries'),
-            'books': ('library', 'libraries')
+            'coffee':      ('type',    'cafe',          'cafes'),
+            'cafes':       ('type',    'cafe',          'cafes'),
+            'movies':      ('type',    'movie_theater', 'movie theaters'),
+            'cinema':      ('type',    'movie_theater', 'movie theaters'),
+            'shopping':    ('type',    'shopping_mall', 'shopping malls'),
+            'gym':         ('type',    'gym',           'gyms'),
+            'fitness':     ('type',    'gym',           'gyms'),
+            'workout':     ('type',    'gym',           'gyms'),
+            'bars':        ('type',    'bar',           'bars'),
+            'nightlife':   ('type',    'bar',           'bars'),
+            'restaurants': ('type',    'restaurant',    'restaurants'),
+            'dining':      ('type',    'restaurant',    'restaurants'),
+            'food':        ('type',    'restaurant',    'restaurants'),
+            'parks':       ('type',    'park',          'parks'),
+            'outdoors':    ('type',    'park',          'parks'),
+            'nature':      ('type',    'park',          'parks'),
+            'library':     ('type',    'library',       'libraries'),
+            'reading':     ('type',    'library',       'libraries'),
+            'books':       ('type',    'library',       'libraries'),
+            'hiking':      ('keyword', 'hiking trail',  'hiking trails'),
+            'sports':      ('type',    'stadium',       'stadiums'),
         }
-        
-        # Always include essentials
-        essential_types = {
-            'grocery_or_supermarket': 'grocery stores',
-            'hospital': 'hospitals',
-            'pharmacy': 'pharmacies'
-        }
-        
-        # Build search list based on hobbies
-        amenity_types = essential_types.copy()
-        
+
+        # Always include essentials (all type-based)
+        essential_tasks = [
+            ('grocery stores', {'type': 'grocery_or_supermarket'}),
+            ('hospitals',      {'type': 'hospital'}),
+            ('pharmacies',     {'type': 'pharmacy'}),
+        ]
+
+        # Build ordered list of (display_name, search_params) to avoid duplicates
+        seen_display_names = {t[0] for t in essential_tasks}
+        hobby_tasks = []
+
         if hobbies:
             print(f"🔍 Searching amenities for hobbies: {hobbies}")
             for hobby in hobbies:
                 hobby_lower = hobby.lower().strip()
                 if hobby_lower in hobby_to_place_type:
-                    place_type, display_name = hobby_to_place_type[hobby_lower]
-                    amenity_types[place_type] = display_name
+                    method, value, display_name = hobby_to_place_type[hobby_lower]
+                    if display_name not in seen_display_names:
+                        seen_display_names.add(display_name)
+                        if method == 'type':
+                            hobby_tasks.append((display_name, {'type': value}))
+                        else:
+                            hobby_tasks.append((display_name, {'keyword': value}))
         else:
             print(f"ℹ️  No hobbies specified, using defaults")
-            amenity_types.update({
-                'restaurant': 'restaurants',
-                'cafe': 'cafes',
-                'park': 'parks'
-            })
-        
+            for display_name, params in [
+                ('restaurants', {'type': 'restaurant'}),
+                ('cafes',       {'type': 'cafe'}),
+                ('parks',       {'type': 'park'}),
+            ]:
+                if display_name not in seen_display_names:
+                    seen_display_names.add(display_name)
+                    hobby_tasks.append((display_name, params))
+
+        all_tasks = essential_tasks + hobby_tasks
+
         print(f"   Searching within {radius}m (~{radius/1609:.1f} miles)")
-        print(f"   Categories: {list(amenity_types.values())}")
-        
+        print(f"   Categories: {[t[0] for t in all_tasks]}")
+
         counts = {}
         locations = {}
-        
-        for place_type, display_name in amenity_types.items():
+
+        for display_name, search_params in all_tasks:
             try:
                 # Simple API call - NO PAGINATION
                 response = self.client.places_nearby(
                     location=(lat, lng),
                     radius=radius,
-                    type=place_type
+                    **search_params
                 )
                 
                 results = response.get('results', [])
                 result_count = len(results)
                 counts[display_name] = result_count
-                
+
                 # Store location data for mapping
                 location_list = []
                 for place in results:
@@ -113,15 +129,15 @@ class PlacesService:
                         'address': place.get('vicinity', ''),
                         'type': display_name
                     })
-                
+
                 locations[display_name] = location_list
-                
+
                 # Log if we hit the cap
                 if result_count == 20:
                     print(f"   ⚠️  {display_name}: 20 (API limit - may be more)")
                 elif result_count > 0:
                     print(f"   ✓ {display_name}: {result_count}")
-                
+
             except Exception as e:
                 print(f"   ❌ Error fetching {display_name}: {e}")
                 counts[display_name] = 0

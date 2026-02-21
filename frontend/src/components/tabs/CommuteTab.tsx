@@ -20,6 +20,8 @@ interface CommuteTabProps {
 }
 
 const CommuteTab: React.FC<CommuteTabProps> = ({ data }) => {
+  const isWorkFromHome = data?.method === 'none' || data?.duration_minutes === 0;
+
   const duration = data?.duration_minutes || 0;
   const distance = data?.distance || '0 km';
   const method = data?.method || 'driving';
@@ -91,6 +93,73 @@ const CommuteTab: React.FC<CommuteTabProps> = ({ data }) => {
     };
     return estimates[mode] || duration;
   };
+
+  if (isWorkFromHome) {
+    return (
+      <div className="space-y-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-green-50 border-2 border-green-200 rounded-xl p-8 text-center"
+        >
+          <div className="text-5xl mb-4">🏠</div>
+          <h3 className="text-2xl font-bold text-green-700 mb-2">You Work from Home</h3>
+          <p className="text-green-600 text-lg">No commute needed — enjoy the extra time and savings!</p>
+        </motion.div>
+
+        <div className="grid grid-cols-3 gap-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 text-center"
+          >
+            <div className="text-3xl font-bold text-green-600">0 min</div>
+            <div className="text-sm text-gray-500 mt-1">Daily commute</div>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 text-center"
+          >
+            <div className="text-3xl font-bold text-green-600">$0</div>
+            <div className="text-sm text-gray-500 mt-1">Monthly commute cost</div>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 text-center"
+          >
+            <div className="text-3xl font-bold text-green-600">0 kg</div>
+            <div className="text-sm text-gray-500 mt-1">Monthly CO₂ emissions</div>
+          </motion.div>
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
+        >
+          <h3 className="text-lg font-bold text-gray-900 mb-3">Annual Savings (vs. average 30-min commute)</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-4 bg-blue-50 rounded-lg">
+              <div className="text-sm text-gray-600 mb-1">Time saved per year</div>
+              <div className="text-2xl font-bold text-blue-600">220 hrs</div>
+              <div className="text-xs text-gray-500 mt-1">~9 full days</div>
+            </div>
+            <div className="p-4 bg-green-50 rounded-lg">
+              <div className="text-sm text-gray-600 mb-1">CO₂ avoided per year</div>
+              <div className="text-2xl font-bold text-green-600">~600 kg</div>
+              <div className="text-xs text-gray-500 mt-1">vs. average driver</div>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

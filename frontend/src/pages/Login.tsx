@@ -15,9 +15,52 @@ const Login = () => {
     name: '',
   });
 
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const validate = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    if (!isLogin) {
+      const trimmed = formData.name.trim();
+      if (!trimmed) {
+        errors.name = 'Full name is required.';
+      } else {
+        const parts = trimmed.split(/\s+/);
+        if (parts.length < 2 || !parts[0] || !parts[parts.length - 1]) {
+          errors.name = 'Please enter your first and last name.';
+        }
+      }
+    }
+
+    if (!formData.email.trim()) {
+      errors.email = 'Email is required.';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+      errors.email = 'Please enter a valid email address.';
+    }
+
+    if (!formData.password) {
+      errors.password = 'Password is required.';
+    } else if (!isLogin && formData.password.length < 6) {
+      errors.password = 'Password must be at least 6 characters.';
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleChange = (field: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    if (fieldErrors[field]) {
+      setFieldErrors((prev) => ({ ...prev, [field]: '' }));
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (!validate()) return;
+
     setLoading(true);
 
     try {
@@ -28,7 +71,7 @@ const Login = () => {
         const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
+          body: JSON.stringify({ ...formData, name: formData.name.trim() }),
         });
 
         if (!response.ok) {
@@ -116,11 +159,13 @@ const Login = () => {
                   <input
                     type="text"
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="input"
-                    required={!isLogin}
+                    onChange={(e) => handleChange('name', e.target.value)}
+                    className={`input ${fieldErrors.name ? 'border-red-400 focus:ring-red-400' : ''}`}
                     placeholder="John Doe"
                   />
+                  {fieldErrors.name && (
+                    <p className="mt-1 text-xs text-red-600">{fieldErrors.name}</p>
+                  )}
                 </div>
               )}
 
@@ -129,13 +174,15 @@ const Login = () => {
                   Email
                 </label>
                 <input
-                  type="email"
+                  type="text"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="input"
-                  required
+                  onChange={(e) => handleChange('email', e.target.value)}
+                  className={`input ${fieldErrors.email ? 'border-red-400 focus:ring-red-400' : ''}`}
                   placeholder="you@example.com"
                 />
+                {fieldErrors.email && (
+                  <p className="mt-1 text-xs text-red-600">{fieldErrors.email}</p>
+                )}
               </div>
 
               <div>
@@ -145,11 +192,13 @@ const Login = () => {
                 <input
                   type="password"
                   value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="input"
-                  required
+                  onChange={(e) => handleChange('password', e.target.value)}
+                  className={`input ${fieldErrors.password ? 'border-red-400 focus:ring-red-400' : ''}`}
                   placeholder="••••••••"
                 />
+                {fieldErrors.password && (
+                  <p className="mt-1 text-xs text-red-600">{fieldErrors.password}</p>
+                )}
               </div>
 
               <button
@@ -166,6 +215,7 @@ const Login = () => {
                 onClick={() => {
                   setIsLogin(!isLogin);
                   setError('');
+                  setFieldErrors({});
                 }}
                 className="text-primary hover:text-blue-700 text-sm font-medium"
               >
