@@ -48,15 +48,6 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis, onBack }) => 
 
   const gradeInfo = getGrade(analysis.overall_score || 0);
 
-  const tabs = [
-    { id: 'overview', label: 'Overview', icon: Home },
-    { id: 'crime', label: 'Safety', icon: Shield },
-    { id: 'cost', label: 'Cost', icon: DollarSign },
-    { id: 'noise', label: 'Noise', icon: Volume2 },
-    { id: 'amenities', label: 'Lifestyle', icon: Building },
-    { id: 'commute', label: 'Commute', icon: Clock }
-  ];
-
   const scores = {
     safety: analysis.safety_score || 0,
     affordability: analysis.affordability_score || 0,
@@ -64,6 +55,15 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis, onBack }) => 
     lifestyle: analysis.lifestyle_score || 0,
     convenience: analysis.convenience_score || 0
   };
+
+  const tabs = [
+    { id: 'overview',   label: 'Overview',  icon: Home,       score: null },
+    { id: 'crime',      label: 'Safety',    icon: Shield,     score: scores.safety },
+    { id: 'cost',       label: 'Cost',      icon: DollarSign, score: scores.affordability },
+    { id: 'noise',      label: 'Noise',     icon: Volume2,    score: scores.environment },
+    { id: 'amenities',  label: 'Lifestyle', icon: Building,   score: scores.lifestyle },
+    { id: 'commute',    label: 'Commute',   icon: Clock,      score: scores.convenience },
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -173,31 +173,35 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis, onBack }) => 
       </motion.div>
 
       {/* Tabs */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <nav className="flex space-x-8">
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-md">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+          <nav className="flex gap-2 overflow-x-auto scrollbar-hide">
             {tabs.map((tab) => {
               const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              const scoreColor = tab.score !== null
+                ? tab.score >= 70 ? 'text-green-600' : tab.score >= 50 ? 'text-yellow-600' : 'text-red-600'
+                : '';
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`
-                    relative flex items-center py-4 px-1 text-sm font-medium transition-colors
-                    ${activeTab === tab.id
-                      ? 'text-blue-600'
-                      : 'text-gray-500 hover:text-gray-700'
+                    relative flex-shrink-0 flex flex-col items-center gap-1 px-5 py-3 rounded-xl text-sm font-semibold transition-all duration-200
+                    ${isActive
+                      ? 'bg-blue-600 text-white shadow-lg scale-105'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-900'
                     }
                   `}
                 >
-                  <Icon className="h-4 w-4 mr-2" />
-                  {tab.label}
-                  {activeTab === tab.id && (
-                    <motion.div
-                      layoutId="activeTab"
-                      className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600"
-                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                    />
+                  <div className="flex items-center gap-2">
+                    <Icon className="h-4 w-4" />
+                    <span>{tab.label}</span>
+                  </div>
+                  {tab.score !== null && (
+                    <span className={`text-xs font-bold ${isActive ? 'text-blue-100' : scoreColor}`}>
+                      {Math.round(tab.score)}/100
+                    </span>
                   )}
                 </button>
               );

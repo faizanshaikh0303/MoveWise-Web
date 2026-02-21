@@ -15,7 +15,7 @@ import {
   Trophy,
   Mountain
 } from 'lucide-react';
-import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Marker, InfoWindow, Circle } from '@react-google-maps/api';
 
 // Define marker type
 interface MarkerType {
@@ -60,7 +60,7 @@ const AmenitiesTab = ({ data }: any) => {
     'schools': { icon: GraduationCap, color: '#6366f1', markerColor: '#6366f1' },
     'libraries': { icon: BookOpen, color: '#7c3aed', markerColor: '#7c3aed' },
     'hiking trails': { icon: Mountain, color: '#15803d', markerColor: '#15803d' },
-    'stadiums': { icon: Trophy, color: '#b45309', markerColor: '#b45309' }
+    'sports venues': { icon: Trophy, color: '#b45309', markerColor: '#b45309' }
   };
 
   // Get all markers for the map - with proper typing
@@ -244,6 +244,19 @@ const AmenitiesTab = ({ data }: any) => {
             options={mapOptions}
             onLoad={(mapInstance) => setMap(mapInstance)}
           >
+            {/* 1-mile radius circle */}
+            <Circle
+              center={center}
+              radius={1609}
+              options={{
+                fillColor: '#3b82f6',
+                fillOpacity: 0.05,
+                strokeColor: '#3b82f6',
+                strokeOpacity: 0.4,
+                strokeWeight: 2,
+              }}
+            />
+
             {/* Destination marker */}
             <Marker
               position={center}

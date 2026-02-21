@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Clock, Car, Bike, Train, FootprintsIcon, MapPin } from 'lucide-react';
+import { Clock, Car, Bike, Train, FootprintsIcon, MapPin, Wifi, Monitor, Coffee, Leaf } from 'lucide-react';
 
 interface CommuteData {
   duration_minutes?: number;
@@ -97,63 +97,91 @@ const CommuteTab: React.FC<CommuteTabProps> = ({ data }) => {
   if (isWorkFromHome) {
     return (
       <div className="space-y-6">
+        {/* Hero banner */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-green-50 border-2 border-green-200 rounded-xl p-8 text-center"
+          className="relative overflow-hidden bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-8 text-white"
         >
-          <div className="text-5xl mb-4">🏠</div>
-          <h3 className="text-2xl font-bold text-green-700 mb-2">You Work from Home</h3>
-          <p className="text-green-600 text-lg">No commute needed — enjoy the extra time and savings!</p>
+          {/* Background decoration */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-32 translate-x-32" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-24 -translate-x-24" />
+
+          <div className="relative flex items-center gap-8">
+            {/* Icon cluster */}
+            <div className="flex-shrink-0">
+              <div className="relative">
+                <div className="w-24 h-24 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                  <Monitor className="w-12 h-12 text-white" />
+                </div>
+                <div className="absolute -top-3 -right-3 w-10 h-10 bg-emerald-400 rounded-xl flex items-center justify-center shadow-lg">
+                  <Wifi className="w-5 h-5 text-white" />
+                </div>
+                <div className="absolute -bottom-3 -left-3 w-10 h-10 bg-teal-400 rounded-xl flex items-center justify-center shadow-lg">
+                  <Coffee className="w-5 h-5 text-white" />
+                </div>
+              </div>
+            </div>
+
+            {/* Text */}
+            <div>
+              <div className="text-sm font-semibold text-emerald-100 uppercase tracking-wider mb-1">Remote Work</div>
+              <h3 className="text-3xl font-bold mb-2">You Work from Home</h3>
+              <p className="text-emerald-100 text-lg leading-relaxed">
+                No commute needed — reclaim your time, save money, and reduce your carbon footprint every single day.
+              </p>
+            </div>
+          </div>
         </motion.div>
 
+        {/* Stats row */}
         <div className="grid grid-cols-3 gap-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 text-center"
-          >
-            <div className="text-3xl font-bold text-green-600">0 min</div>
-            <div className="text-sm text-gray-500 mt-1">Daily commute</div>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 text-center"
-          >
-            <div className="text-3xl font-bold text-green-600">$0</div>
-            <div className="text-sm text-gray-500 mt-1">Monthly commute cost</div>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 text-center"
-          >
-            <div className="text-3xl font-bold text-green-600">0 kg</div>
-            <div className="text-sm text-gray-500 mt-1">Monthly CO₂ emissions</div>
-          </motion.div>
+          {[
+            { icon: Clock, label: 'Daily commute', value: '0 min', sub: 'saved every day', color: 'emerald' },
+            { icon: MapPin, label: 'Monthly cost', value: '$0', sub: 'transport savings', color: 'teal' },
+            { icon: Leaf, label: 'Monthly CO₂', value: '0 kg', sub: 'zero emissions', color: 'green' },
+          ].map(({ icon: Icon, label, value, sub, color }, i) => (
+            <motion.div
+              key={label}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 + i * 0.1 }}
+              className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
+            >
+              <div className={`w-10 h-10 bg-${color}-100 rounded-lg flex items-center justify-center mb-3`}>
+                <Icon className={`w-5 h-5 text-${color}-600`} />
+              </div>
+              <div className="text-sm text-gray-500 mb-1">{label}</div>
+              <div className={`text-3xl font-bold text-${color}-600`}>{value}</div>
+              <div className="text-xs text-gray-400 mt-1">{sub}</div>
+            </motion.div>
+          ))}
         </div>
 
+        {/* Annual savings */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
           className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
         >
-          <h3 className="text-lg font-bold text-gray-900 mb-3">Annual Savings (vs. average 30-min commute)</h3>
+          <h3 className="text-lg font-bold text-gray-900 mb-4">Annual Savings vs. Average 30-min Commute</h3>
           <div className="grid grid-cols-2 gap-4">
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <div className="text-sm text-gray-600 mb-1">Time saved per year</div>
-              <div className="text-2xl font-bold text-blue-600">220 hrs</div>
-              <div className="text-xs text-gray-500 mt-1">~9 full days</div>
+            <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className="w-4 h-4 text-blue-500" />
+                <span className="text-sm font-medium text-gray-700">Time saved per year</span>
+              </div>
+              <div className="text-3xl font-bold text-blue-600">220 hrs</div>
+              <div className="text-xs text-gray-500 mt-1">That's ~9 full days back in your life</div>
             </div>
-            <div className="p-4 bg-green-50 rounded-lg">
-              <div className="text-sm text-gray-600 mb-1">CO₂ avoided per year</div>
-              <div className="text-2xl font-bold text-green-600">~600 kg</div>
-              <div className="text-xs text-gray-500 mt-1">vs. average driver</div>
+            <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
+              <div className="flex items-center gap-2 mb-2">
+                <Leaf className="w-4 h-4 text-emerald-500" />
+                <span className="text-sm font-medium text-gray-700">CO₂ avoided per year</span>
+              </div>
+              <div className="text-3xl font-bold text-emerald-600">~600 kg</div>
+              <div className="text-xs text-gray-500 mt-1">Compared to an average driver</div>
             </div>
           </div>
         </motion.div>

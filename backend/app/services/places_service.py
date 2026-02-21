@@ -61,7 +61,7 @@ class PlacesService:
             'reading':     ('type',    'library',       'libraries'),
             'books':       ('type',    'library',       'libraries'),
             'hiking':      ('keyword', 'hiking trail',  'hiking trails'),
-            'sports':      ('type',    'stadium',       'stadiums'),
+            'sports':      ('type',    'stadium',       'sports venues'),
         }
 
         # Always include essentials (all type-based)
