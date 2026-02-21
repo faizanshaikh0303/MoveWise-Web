@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore.ts';
 import { analysisAPI } from '../services/api';
 import type { AnalysisSummary } from '../types';
+import { BarChart3, CalendarDays, MapPin, Plus, ChevronRight, ArrowDown } from 'lucide-react';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -38,6 +39,8 @@ const Dashboard = () => {
       setLoading(false);
     }
   };
+
+  const uniqueDestinations = new Set(analyses.map(a => a.destination_address)).size;
 
   const handleLogout = () => {
     logout();
@@ -140,56 +143,41 @@ const Dashboard = () => {
               onClick={() => navigate('/new-analysis')}
               className="group px-6 py-3 bg-gradient-to-r from-primary to-blue-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
             >
-              <svg className="w-5 h-5 group-hover:rotate-90 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+              <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform duration-200" />
               New Analysis
             </button>
           </div>
 
-          {/* Stats Cards */}
+          {/* Stats Strip */}
           {!loading && analyses.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-              <div className="bg-white/80 backdrop-blur-lg rounded-2xl p-6 shadow-lg border border-white/20">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Total Analyses</p>
-                    <p className="text-2xl font-bold text-gray-900">{analyses.length}</p>
-                  </div>
+              <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-5 shadow-sm border border-white/60 flex items-center gap-4">
+                <div className="w-11 h-11 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <BarChart3 className="w-5 h-5 text-blue-500" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900 leading-none">{analyses.length}</p>
+                  <p className="text-xs text-gray-500 mt-1">Analyses run</p>
                 </div>
               </div>
 
-              <div className="bg-white/80 backdrop-blur-lg rounded-2xl p-6 shadow-lg border border-white/20">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Most Recent</p>
-                    <p className="text-lg font-semibold text-gray-900">{formatDate(analyses[0].created_at)}</p>
-                  </div>
+              <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-5 shadow-sm border border-white/60 flex items-center gap-4">
+                <div className="w-11 h-11 bg-emerald-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <CalendarDays className="w-5 h-5 text-emerald-500" />
+                </div>
+                <div>
+                  <p className="text-base font-bold text-gray-900 leading-none">{formatDate(analyses[0].created_at)}</p>
+                  <p className="text-xs text-gray-500 mt-1">Last report</p>
                 </div>
               </div>
 
-              <div className="bg-white/80 backdrop-blur-lg rounded-2xl p-6 shadow-lg border border-white/20">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Locations</p>
-                    <p className="text-2xl font-bold text-gray-900">{analyses.length}</p>
-                  </div>
+              <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-5 shadow-sm border border-white/60 flex items-center gap-4">
+                <div className="w-11 h-11 bg-violet-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <MapPin className="w-5 h-5 text-violet-500" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900 leading-none">{uniqueDestinations}</p>
+                  <p className="text-xs text-gray-500 mt-1">Destinations explored</p>
                 </div>
               </div>
             </div>
@@ -270,9 +258,7 @@ const Dashboard = () => {
                     </div>
 
                     <div className="flex items-center justify-center">
-                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                      </svg>
+                      <ArrowDown className="w-4 h-4 text-gray-300" />
                     </div>
 
                     <div className="flex items-start gap-2">
@@ -292,9 +278,7 @@ const Dashboard = () => {
                   {/* View Report Button */}
                   <button className="w-full py-3 bg-gradient-to-r from-primary to-blue-600 text-white rounded-xl font-medium group-hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2">
                     View Report
-                    <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
+                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </button>
                 </div>
               </div>
