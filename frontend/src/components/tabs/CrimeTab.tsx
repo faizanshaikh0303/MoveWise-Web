@@ -105,12 +105,12 @@ const CrimeTab = ({ data }) => {
             {comparison.crime_change_percent > 0 ? (
               <>
                 <TrendingUp className="h-4 w-4 text-red-500 mr-1" />
-                <span className="text-red-600">+{comparison.crime_change_percent}% more</span>
+                <span className="text-red-600">+{Math.round(comparison.crime_change_percent)}% more</span>
               </>
             ) : comparison.crime_change_percent < 0 ? (
               <>
                 <TrendingDown className="h-4 w-4 text-green-500 mr-1" />
-                <span className="text-green-600">{comparison.crime_change_percent}% safer</span>
+                <span className="text-green-600">{Math.abs(Math.round(comparison.crime_change_percent))}% safer</span>
               </>
             ) : (
               <span className="text-gray-600">No change</span>
