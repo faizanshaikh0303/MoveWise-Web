@@ -16,7 +16,6 @@ from app.services.noise_service import noise_service
 # NEW: Real data services with FREE APIs
 from app.services.fbi_real_crime_service import fbi_real_crime_service  # REAL FBI Data!
 from app.services.census_cost_service import census_cost_service  # Census Bureau (FREE!)
-from app.services.google_noise_service import google_noise_service
 from app.services.scoring_service import scoring_service
 from app.services.llm_service import llm_service
 

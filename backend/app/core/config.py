@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     
     # Optional APIs (with fallbacks)
     SPOTCRIME_API_KEY: Optional[str] = "public"
-    FBI_API_KEY: Optional[str] = None          # ← MAKE SURE THIS IS HERE
+    FBI_API_KEY: Optional[str] = None          
     HUD_API_KEY: Optional[str] = None
     BLS_API_KEY: Optional[str] = None
     OSM_USER_AGENT: Optional[str] = "movewise_app_v1"
@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
-        extra = "allow"  # ← IMPORTANT
+        extra = "allow" # Allow extra fields in .env without raising errors
 
 
 settings = Settings()
