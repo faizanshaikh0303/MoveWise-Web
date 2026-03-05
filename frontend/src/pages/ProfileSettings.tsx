@@ -374,9 +374,9 @@ const ProfileSettings = () => {
                   </label>
                   <div className="space-y-2">
                     {[
-                      { value: 'quiet', label: 'Quiet', desc: 'Peaceful, low-noise environments' },
-                      { value: 'moderate', label: 'Moderate', desc: 'Typical urban sounds are okay' },
-                      { value: 'doesnt-matter', label: "Doesn't Matter", desc: 'Noise is not a concern' },
+                      { value: 'quiet', label: 'Quiet', desc: 'Prefer peaceful, low-noise environments' },
+                      { value: 'moderate', label: 'Moderate', desc: 'Some activity is fine' },
+                      { value: 'lively', label: 'Lively', desc: 'Enjoy vibrant, bustling areas' },
                     ].map((option) => (
                       <button
                         key={option.value}
