@@ -20,8 +20,8 @@ from app.services.scoring_service import scoring_service
 from app.services.llm_service import llm_service
 
 from typing import List
+import asyncio
 import json
-import re
 from datetime import datetime
 import requests
 router = APIRouter(prefix="/analysis", tags=["analysis"])
@@ -76,34 +76,35 @@ async def create_analysis(
     
     try:
         print(f"🔍 Starting analysis for user {current_user.id}")
-        
-        # 1. Geocode both addresses
+
+        # ── Phase 1: geocode both addresses in parallel ───────────────────────
         print("📍 Geocoding addresses...")
-        current_lat, current_lng = places_service.geocode_address(request.current_address)
-        dest_lat, dest_lng = places_service.geocode_address(request.destination_address)
-        
+        (current_lat, current_lng), (dest_lat, dest_lng) = await asyncio.gather(
+            asyncio.to_thread(places_service.geocode_address, request.current_address),
+            asyncio.to_thread(places_service.geocode_address, request.destination_address),
+        )
+
         if not current_lat or not dest_lat:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Could not geocode one or both addresses"
             )
-        
+
         print(f"✓ Current: ({current_lat}, {current_lng})")
         print(f"✓ Destination: ({dest_lat}, {dest_lng})")
-        
-        # 2. Extract ZIP codes for cost analysis
-        # current_zip = extract_zip_code(request.current_address)
-        # dest_zip = extract_zip_code(request.destination_address)
-        current_zip = get_zip_from_coords(current_lat, current_lng)
-        dest_zip = get_zip_from_coords(dest_lat, dest_lng)
+
+        # ── Phase 2: ZIP lookups in parallel ─────────────────────────────────
+        current_zip, dest_zip = await asyncio.gather(
+            asyncio.to_thread(get_zip_from_coords, current_lat, current_lng),
+            asyncio.to_thread(get_zip_from_coords, dest_lat, dest_lng),
+        )
         print(f"📮 ZIP codes: {current_zip} → {dest_zip}")
-        
-        # 3. Get user profile for personalization
+
+        # ── Phase 3: user profile (fast DB read, no I/O to parallelise) ──────
         user_profile = db.query(UserProfile).filter(
             UserProfile.user_id == current_user.id
         ).first()
-        
-        user_preferences = {}
+
         if user_profile:
             user_preferences = {
                 'work_hours': user_profile.work_hours or '9:00 - 17:00',
@@ -114,7 +115,6 @@ async def create_analysis(
                 'commute_preference': user_profile.commute_preference or 'driving'
             }
         else:
-            # Default preferences
             user_preferences = {
                 'work_hours': '9:00 - 17:00',
                 'work_address': None,
@@ -123,77 +123,175 @@ async def create_analysis(
                 'hobbies': [],
                 'commute_preference': 'driving'
             }
-        
+
         print(f"👤 User preferences loaded: {user_preferences.get('noise_preference')} noise")
-        
-        # 4. Fetch REAL DATA from new services
-        
-        # === CRIME DATA (FBI Crime Data Explorer - REAL DATA!) ===
-        print("🚨 Fetching REAL crime data (FBI UCR)...")
-        try:
-            crime_data = fbi_real_crime_service.compare_crime_data(
-                current_lat, current_lng,
-                dest_lat, dest_lng,
-                user_schedule=user_preferences
-            )
-            is_real = crime_data['destination'].get('is_real_data', False)
-            print(f"✓ Crime: {crime_data['destination']['total_crimes']} crimes/30 days")
-            print(f"  Safety Score: {crime_data['destination']['safety_score']}/100")
-            print(f"  Data Source: {crime_data['destination'].get('data_source', 'FBI UCR')}")
-            if is_real:
-                print(f"  ✨ Using REAL FBI official data!")
-        except Exception as e:
-            print(f"⚠️  FBI Crime service error (using fallback): {e}")
-            # Fallback to old service
-            crime_data = await crime_service.compare_crime_rates(
-                current_lat, current_lng, request.current_address,
-                dest_lat, dest_lng, request.destination_address
-            )
-        
-        # === NOISE DATA (OpenStreetMap) ===
-        print("🔊 Analyzing noise levels...")
-        
-        # Get user's noise preference (NEW!)
+
         user_noise_pref = user_preferences.get('noise_preference', 'moderate')
-        print(f"   User noise preference: {user_noise_pref}")
-        
-        # Analyze current location WITH preference
-        noise_data_current = noise_service.estimate_noise_level(
-            request.current_address,
-            user_preference=user_noise_pref  # ← PASS PREFERENCE
+        work_address = user_profile.work_address if user_profile else None
+        preferred_mode = user_preferences.get('commute_preference', 'driving')
+        is_work_from_home = (
+            not work_address or
+            work_address.strip().lower() == 'work from home' or
+            (user_profile and user_profile.commute_preference == 'none')
         )
-        
-        # Analyze destination WITH preference
-        noise_data_dest = noise_service.estimate_noise_level(
-            request.destination_address,
-            user_preference=user_noise_pref  # ← PASS PREFERENCE
+
+        # ── Phase 4: all external fetches in parallel ─────────────────────────
+        # Crime and cost have fallbacks so they are wrapped in async helpers.
+        # Commute runs its 4 transport-mode calls in parallel internally.
+
+        async def fetch_crime():
+            try:
+                data = await asyncio.to_thread(
+                    fbi_real_crime_service.compare_crime_data,
+                    current_lat, current_lng, dest_lat, dest_lng,
+                    user_schedule=user_preferences
+                )
+                is_real = data['destination'].get('is_real_data', False)
+                print(f"✓ Crime: {data['destination']['total_crimes']} crimes/30 days")
+                print(f"  Safety Score: {data['destination']['safety_score']}/100")
+                if is_real:
+                    print(f"  ✨ Using REAL FBI official data!")
+                return data
+            except Exception as e:
+                print(f"⚠️  FBI Crime service error (using fallback): {e}")
+                return await crime_service.compare_crime_rates(
+                    current_lat, current_lng, request.current_address,
+                    dest_lat, dest_lng, request.destination_address
+                )
+
+        async def fetch_cost():
+            try:
+                data = await asyncio.to_thread(
+                    census_cost_service.get_comprehensive_costs,
+                    current_zip, dest_zip, 2
+                )
+                print(f"✓ Cost: ${data['destination']['total_monthly']:,.2f}/month")
+                print(f"  Affordability: {data['destination']['affordability_score']}/100")
+                return data
+            except Exception as e:
+                print(f"⚠️  Census cost service error (using fallback): {e}")
+                return await asyncio.to_thread(
+                    cost_service.compare_costs,
+                    request.current_address, request.destination_address
+                )
+
+        async def fetch_commute():
+            if is_work_from_home:
+                print("✓ Commute: Work from home (skipped)")
+                return {
+                    'duration_minutes': 0,
+                    'distance': '0 km',
+                    'method': 'none',
+                    'description': 'You work from home — no commute needed!',
+                    'alternatives': {}
+                }
+            if not work_address:
+                print("✓ Commute: No work address (skipped)")
+                return {
+                    'duration_minutes': None,
+                    'distance': 'Unknown',
+                    'method': 'driving',
+                    'description': 'No work address provided.',
+                    'alternatives': {}
+                }
+            try:
+                print(f"   Preferred method: {preferred_mode}")
+                print(f"   Calculating times for all transportation modes in parallel...")
+                modes = ['driving', 'transit', 'bicycling', 'walking']
+                results = await asyncio.gather(*[
+                    asyncio.to_thread(
+                        places_service.get_commute_info,
+                        dest_lat, dest_lng, work_address, mode
+                    )
+                    for mode in modes
+                ], return_exceptions=True)
+
+                all_modes = {}
+                primary_result = {}
+                for mode, result in zip(modes, results):
+                    if isinstance(result, Exception):
+                        print(f"   ⚠️  {mode}: Failed ({result})")
+                        all_modes[mode] = {'duration_minutes': None, 'distance': None}
+                    else:
+                        all_modes[mode] = {
+                            'duration_minutes': result.get('duration_minutes'),
+                            'distance': result.get('distance')
+                        }
+                        if result.get('duration_minutes'):
+                            print(f"   ✓ {mode}: {result['duration_minutes']} min")
+                        if mode == preferred_mode:
+                            primary_result = result
+
+                data = {
+                    'duration_minutes': primary_result.get('duration_minutes'),
+                    'distance': primary_result.get('distance'),
+                    'method': preferred_mode,
+                    'description': primary_result.get('description'),
+                    'alternatives': all_modes
+                }
+                print(f"✓ Primary commute: {data['duration_minutes']} min by {preferred_mode}")
+                return data
+            except Exception as e:
+                print(f"⚠️  Commute calculation error: {e}")
+                return {
+                    'duration_minutes': None,
+                    'distance': 'Unknown',
+                    'method': preferred_mode,
+                    'description': 'Unable to calculate commute time.',
+                    'alternatives': {}
+                }
+
+        print("🚀 Fetching crime, noise, cost, amenities, commute in parallel...")
+        (
+            crime_data,
+            noise_data_current,
+            noise_data_dest,
+            noise_comparison,
+            cost_data,
+            amenities_data,
+            commute_data,
+        ) = await asyncio.gather(
+            fetch_crime(),
+            asyncio.to_thread(
+                noise_service.estimate_noise_level,
+                request.current_address, user_noise_pref
+            ),
+            asyncio.to_thread(
+                noise_service.estimate_noise_level,
+                request.destination_address, user_noise_pref
+            ),
+            asyncio.to_thread(
+                noise_service.compare_noise_levels,
+                request.current_address, request.destination_address,
+                user_preferences.get('sleep_schedule'), user_noise_pref
+            ),
+            fetch_cost(),
+            asyncio.to_thread(
+                places_service.compare_amenities,
+                current_lat, current_lng, dest_lat, dest_lng,
+                user_preferences.get('hobbies', [])
+            ),
+            fetch_commute(),
         )
-        
-        # Compare WITH preference
-        noise_comparison = noise_service.compare_noise_levels(
-            request.current_address,
-            request.destination_address,
-            sleep_preference=user_preferences.get('sleep_schedule'),
-            user_preference=user_noise_pref  # ← PASS PREFERENCE
-        )
-        
-        print(f"   Current: {noise_data_current['score']:.1f} dB → Score: {noise_data_current['noise_score']}/100")
-        print(f"   Destination: {noise_data_dest['score']:.1f} dB → Score: {noise_data_dest['noise_score']}/100")
-        
-        # Build noise data object
+
+        print(f"   Noise current: {noise_data_current['score']:.1f} dB → Score: {noise_data_current['noise_score']}/100")
+        print(f"   Noise dest:    {noise_data_dest['score']:.1f} dB → Score: {noise_data_dest['noise_score']}/100")
+        print(f"✓ Amenities: {amenities_data.get('destination', {}).get('total_count', 0)} places")
+
+        # Build noise_data dict from the parallel results
         noise_data = {
             'current': {
                 'estimated_db': noise_data_current['score'],
                 'noise_category': noise_data_current['noise_category'],
-                'noise_score': noise_data_current['noise_score'],  # Preference-aware score
+                'noise_score': noise_data_current['noise_score'],
                 'description': noise_data_current['description']
             },
             'destination': {
                 'estimated_db': noise_data_dest['score'],
                 'noise_category': noise_data_dest['noise_category'],
-                'noise_score': noise_data_dest['noise_score'],  # Preference-aware score
+                'noise_score': noise_data_dest['noise_score'],
                 'description': noise_data_dest['description'],
-                'preference_match': noise_data_dest['preference_match']  # NEW!
+                'preference_match': noise_data_dest['preference_match']
             },
             'comparison': {
                 'db_difference': noise_comparison['db_difference'],
@@ -203,123 +301,8 @@ async def create_analysis(
                 'recommendation': noise_comparison['analysis']
             }
         }
-        
-        print(f"✓ Noise analysis complete")
-        
-        # === COST DATA (US Census Bureau - FREE!) ===
-        print("💰 Calculating cost of living (US Census Bureau)...")
-        try:
-            cost_data = census_cost_service.get_comprehensive_costs(
-                current_zip,
-                dest_zip,
-                bedrooms=2  # Can make this configurable via user profile
-            )
-            print(f"✓ Cost: ${cost_data['destination']['total_monthly']:,.2f}/month")
-            print(f"  Affordability: {cost_data['destination']['affordability_score']}/100")
-            print(f"  Data Source: {cost_data['destination'].get('data_source', 'Census Bureau')}")
-        except Exception as e:
-            print(f"⚠️  Census cost service error (using fallback): {e}")
-            # Fallback to old service
-            cost_data = cost_service.compare_costs(
-                request.current_address,
-                request.destination_address
-            )
-        
-        # === AMENITIES DATA (Google Places) ===
-        print("🏪 Finding nearby amenities (Google Places)...")
-        amenities_data = places_service.compare_amenities(
-            current_lat, current_lng,
-            dest_lat, dest_lng,
-            hobbies=user_preferences.get('hobbies', [])
-        )
-        print(f"✓ Amenities: {amenities_data.get('destination', {}).get('total_count', 0)} places")
-        
-        # === COMMUTE DATA (Google Maps) ===
-        print("🚗 Calculating commute times...")
-        commute_data = None
-        work_address = user_profile.work_address
-        is_work_from_home = (
-            not work_address or
-            work_address.strip().lower() == 'work from home' or
-            user_profile.commute_preference == 'none'
-        )
-        if not is_work_from_home and work_address:
-            try:
-                # Get user's preferred commute method
-                preferred_mode = user_preferences.get('commute_preference', 'driving')
-                
-                print(f"   Preferred method: {preferred_mode}")
-                print(f"   Calculating times for all transportation modes...")
-                
-                # Calculate commute for ALL modes (for alternatives display)
-                all_modes = {}
-                for mode in ['driving', 'transit', 'bicycling', 'walking']:
-                    try:
-                        result = places_service.get_commute_info(
-                            dest_lat, dest_lng,
-                            work_address,
-                            mode=mode
-                        )
-                        all_modes[mode] = {
-                            'duration_minutes': result.get('duration_minutes'),
-                            'distance': result.get('distance')
-                        }
-                        if result.get('duration_minutes'):
-                            print(f"   ✓ {mode}: {result['duration_minutes']} min")
-                    except Exception as e:
-                        print(f"   ⚠️  {mode}: Failed ({e})")
-                        all_modes[mode] = {
-                            'duration_minutes': None,
-                            'distance': None
-                        }
-                
-                # Use the preferred mode as primary
-                primary_commute = places_service.get_commute_info(
-                    dest_lat, dest_lng,
-                    work_address,
-                    mode=preferred_mode
-                )
-                
-                # Build complete commute data
-                commute_data = {
-                    'duration_minutes': primary_commute.get('duration_minutes'),
-                    'distance': primary_commute.get('distance'),
-                    'method': preferred_mode,
-                    'description': primary_commute.get('description'),
-                    'alternatives': all_modes  # Include all mode times
-                }
-                
-                print(f"✓ Primary commute: {commute_data['duration_minutes']} min by {preferred_mode}")
-                
-            except Exception as e:
-                print(f"⚠️  Commute calculation error: {e}")
-                commute_data = {
-                    'duration_minutes': None,
-                    'distance': 'Unknown',
-                    'method': user_preferences.get('commute_preference', 'driving'),
-                    'description': 'Unable to calculate commute time.',
-                    'alternatives': {}
-                }
-        elif is_work_from_home:
-            print(f"✓ Commute: Work from home (skipped)")
-            commute_data = {
-                'duration_minutes': 0,
-                'distance': '0 km',
-                'method': 'none',
-                'description': 'You work from home — no commute needed!',
-                'alternatives': {}
-            }
-        else:
-            print(f"✓ Commute: No work address (skipped)")
-            commute_data = {
-                'duration_minutes': None,
-                'distance': 'Unknown',
-                'method': 'driving',
-                'description': 'No work address provided.',
-                'alternatives': {}
-            }
-        
-        # 5. Calculate comprehensive scores
+
+        # ── Phase 5: scoring (CPU-only, no I/O) ──────────────────────────────
         print("🎯 Calculating comprehensive scores...")
         scores = scoring_service.calculate_overall_score(
             crime_data=crime_data,
@@ -334,10 +317,11 @@ async def create_analysis(
         print(f"  • Environment: {scores['component_scores']['environment']['score']:.1f}")
         print(f"  • Lifestyle: {scores['component_scores']['lifestyle']['score']:.1f}")
         print(f"  • Convenience: {scores['component_scores']['convenience']['score']:.1f}")
-        
-        # 6. Generate AI insights with real data
+
+        # ── Phase 6: LLM (depends on scores, runs in thread) ─────────────────
         print("🤖 Generating AI insights (LLM)...")
-        llm_analysis = llm_service.generate_lifestyle_analysis(
+        llm_analysis = await asyncio.to_thread(
+            llm_service.generate_lifestyle_analysis,
             request.current_address,
             request.destination_address,
             crime_data,
@@ -346,7 +330,7 @@ async def create_analysis(
             noise_data,
             commute_data,
             user_preferences,
-            overall_scores=scores
+            scores
         )
         print(f"✓ AI insights generated")
         print(f"  • Overview: {len(llm_analysis.get('overview_summary', ''))} chars")
