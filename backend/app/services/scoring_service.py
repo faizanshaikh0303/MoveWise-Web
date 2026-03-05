@@ -350,29 +350,6 @@ class ScoringService:
         else:
             return "⚠️ Consider alternatives. This location has several concerning factors that may impact your quality of life."
     
-    def calculate_comparison_delta(
-        self,
-        current_scores: Dict[str, float],
-        destination_scores: Dict[str, float]
-    ) -> Dict[str, Any]:
-        """Calculate the delta between current and destination scores"""
-        
-        deltas = {}
-        
-        for category in current_scores:
-            current = current_scores[category]
-            destination = destination_scores[category]
-            delta = destination - current
-            
-            deltas[category] = {
-                'current': round(current, 1),
-                'destination': round(destination, 1),
-                'change': round(delta, 1),
-                'direction': 'improving' if delta > 5 else 'declining' if delta < -5 else 'stable',
-                'percent_change': round((delta / current * 100), 1) if current > 0 else 0
-            }
-        
-        return deltas
 
 
 # Global instance

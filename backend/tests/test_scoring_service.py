@@ -302,28 +302,3 @@ class TestRecommendation:
         rec = service._generate_overall_recommendation(40, 80, 80, 80)
         assert any(word in rec.lower() for word in ["concern", "alternative", "caution", "mixed"])
 
-
-# ---------------------------------------------------------------------------
-# calculate_comparison_delta
-# ---------------------------------------------------------------------------
-
-class TestComparisonDelta:
-    def test_delta_calculates_correctly(self):
-        current = {"safety": 60.0, "affordability": 70.0}
-        destination = {"safety": 75.0, "affordability": 65.0}
-        result = service.calculate_comparison_delta(current, destination)
-
-        assert result["safety"]["change"] == pytest.approx(15.0, abs=0.1)
-        assert result["affordability"]["change"] == pytest.approx(-5.0, abs=0.1)
-
-    def test_improving_direction_when_delta_positive(self):
-        result = service.calculate_comparison_delta({"safety": 60.0}, {"safety": 80.0})
-        assert result["safety"]["direction"] == "improving"
-
-    def test_declining_direction_when_delta_negative(self):
-        result = service.calculate_comparison_delta({"safety": 80.0}, {"safety": 60.0})
-        assert result["safety"]["direction"] == "declining"
-
-    def test_stable_direction_for_small_delta(self):
-        result = service.calculate_comparison_delta({"safety": 70.0}, {"safety": 73.0})
-        assert result["safety"]["direction"] == "stable"
