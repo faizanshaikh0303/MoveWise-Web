@@ -196,7 +196,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ analysis }) => {
             </div>
 
             {analysis.overview_summary && (
-              <p className="mt-4 text-slate-300 text-sm leading-relaxed line-clamp-3 max-w-xl">
+              <p className="mt-4 text-slate-300 text-sm leading-relaxed max-w-xl">
                 {analysis.overview_summary}
               </p>
             )}
