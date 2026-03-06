@@ -123,10 +123,11 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ analysis }) => {
 
   if (crimeData.crime_change_percent !== undefined) {
     const pct = Math.abs(Math.round(crimeData.crime_change_percent));
+    const lessCrime = crimeData.crime_change_percent < 0;
     highlights.push({
       label: 'Crime rate',
-      value: crimeData.is_safer ? `${pct}% less crime` : `${pct}% more crime`,
-      good: crimeData.is_safer,
+      value: lessCrime ? `${pct}% less crime` : `${pct}% more crime`,
+      good: lessCrime,
       icon: Shield,
     });
   }
