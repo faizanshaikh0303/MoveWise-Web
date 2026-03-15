@@ -184,7 +184,7 @@ Road Breakdown:
 
 COMPARISON:
 • dB Difference: {noise_comp.get('db_difference', 0):+.1f} dB
-• Description: {noise_comp.get('db_change_description', 'Similar')}
+• Description: {noise_comp.get('recommendation', 'Similar')}
 • User Preference: {user_preferences.get('noise_preference', 'moderate') if user_preferences else 'moderate'}
 • Match Quality: {noise_comp.get('preference_match', {}).get('quality', 'fair')}
 • Recommendation: {noise_comp.get('recommendation', 'Review noise levels')}

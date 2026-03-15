@@ -118,7 +118,7 @@ def make_mock_services():
     return [
         patch("app.api.analysis.places_service.geocode_address", return_value=STUB_GEOCODE),
         patch("app.api.analysis.get_zip_from_coords", return_value=STUB_ZIP),
-        patch("app.api.analysis.fbi_real_crime_service.compare_crime_data", return_value=STUB_CRIME),
+        patch("app.api.analysis.crime_service.compare_crime_data", return_value=STUB_CRIME),
         patch("app.api.analysis.noise_service.estimate_noise_level", side_effect=[
             {
                 "score": 60.0,
@@ -147,7 +147,7 @@ def make_mock_services():
             "analysis": "Destination is quieter.",
             "db_change_description": "Quieter by 10 dB",
         }),
-        patch("app.api.analysis.census_cost_service.get_comprehensive_costs", return_value=STUB_COST),
+        patch("app.api.analysis.cost_service.compare_costs", return_value=STUB_COST),
         patch("app.api.analysis.places_service.compare_amenities", return_value=STUB_AMENITIES),
         patch("app.api.analysis.places_service.get_commute_info", return_value=STUB_COMMUTE),
         patch("app.api.analysis.llm_service.generate_lifestyle_analysis", return_value=STUB_LLM),

@@ -1,5 +1,4 @@
 from typing import Dict, Any, Optional
-from datetime import datetime
 
 
 class ScoringService:
@@ -260,7 +259,7 @@ class ScoringService:
         # Noise comparison
         noise_comp = noise_data.get('comparison', {})
         db_diff = noise_comp.get('db_difference', 0)
-        insights['environment'] = noise_comp.get('db_change_description', 'Similar noise levels')
+        insights['environment'] = noise_comp.get('recommendation', 'Similar noise levels')
         
         return insights
     

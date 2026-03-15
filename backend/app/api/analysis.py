@@ -7,15 +7,11 @@ from app.models.analysis import Analysis
 from app.schemas.analysis import AnalysisRequest, AnalysisResponse, AnalysisList
 from app.api.auth import get_current_user
 from app.core.config import settings
-# Existing services
 from app.services.places_service import places_service
 from app.services.crime_service import crime_service
 from app.services.cost_service import cost_service
 from app.services.noise_service import noise_service
 
-# NEW: Real data services with FREE APIs
-from app.services.fbi_real_crime_service import fbi_real_crime_service  # REAL FBI Data!
-from app.services.census_cost_service import census_cost_service  # Census Bureau (FREE!)
 from app.services.scoring_service import scoring_service
 from app.services.llm_service import llm_service
 
@@ -23,7 +19,7 @@ from typing import List
 import asyncio
 import json
 from datetime import datetime
-import requests
+
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
 
@@ -38,26 +34,6 @@ class DateTimeEncoder(json.JSONEncoder):
 def safe_json_dumps(obj):
     """Safely convert object to JSON string, handling datetime objects"""
     return json.dumps(obj, cls=DateTimeEncoder)
-
-
-def get_zip_from_coords(lat, lng):
-    """Reverse geocode to get ZIP code"""
-    try:
-        url = f"https://maps.googleapis.com/maps/api/geocode/json"
-        params = {
-            'latlng': f'{lat},{lng}',
-            'key': settings.GOOGLE_MAPS_API_KEY
-        }
-        response = requests.get(url, params=params, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            for result in data.get('results', []):
-                for component in result.get('address_components', []):
-                    if 'postal_code' in component.get('types', []):
-                        return component['short_name']
-        return '10001'  # Fallback
-    except:
-        return '10001'
 
 @router.post("/", response_model=AnalysisResponse)
 async def create_analysis(
@@ -93,14 +69,7 @@ async def create_analysis(
         print(f"✓ Current: ({current_lat}, {current_lng})")
         print(f"✓ Destination: ({dest_lat}, {dest_lng})")
 
-        # ── Phase 2: ZIP lookups in parallel ─────────────────────────────────
-        current_zip, dest_zip = await asyncio.gather(
-            asyncio.to_thread(get_zip_from_coords, current_lat, current_lng),
-            asyncio.to_thread(get_zip_from_coords, dest_lat, dest_lng),
-        )
-        print(f"📮 ZIP codes: {current_zip} → {dest_zip}")
-
-        # ── Phase 3: user profile (fast DB read, no I/O to parallelise) ──────
+        # ── Phase 2: user profile (fast DB read, no I/O to parallelise) ──────
         user_profile = db.query(UserProfile).filter(
             UserProfile.user_id == current_user.id
         ).first()
@@ -140,40 +109,22 @@ async def create_analysis(
         # Commute runs its 4 transport-mode calls in parallel internally.
 
         async def fetch_crime():
-            try:
-                data = await asyncio.to_thread(
-                    fbi_real_crime_service.compare_crime_data,
-                    current_lat, current_lng, dest_lat, dest_lng,
-                    user_schedule=user_preferences
-                )
-                is_real = data['destination'].get('is_real_data', False)
-                print(f"✓ Crime: {data['destination']['total_crimes']} crimes/30 days")
-                print(f"  Safety Score: {data['destination']['safety_score']}/100")
-                if is_real:
-                    print(f"  ✨ Using REAL FBI official data!")
-                return data
-            except Exception as e:
-                print(f"⚠️  FBI Crime service error (using fallback): {e}")
-                return await crime_service.compare_crime_rates(
-                    current_lat, current_lng, request.current_address,
-                    dest_lat, dest_lng, request.destination_address
-                )
+            data = await crime_service.compare_crime_data(
+                current_lat, current_lng, request.current_address,
+                dest_lat, dest_lng, request.destination_address,
+            )
+            print(f"✓ Crime: {data['destination']['total_crimes']} crimes/30 days"
+                  f" | Safety Score: {data['destination']['safety_score']}/100"
+                  f" | Source: {data['destination']['data_source']}")
+            return data
 
         async def fetch_cost():
-            try:
-                data = await asyncio.to_thread(
-                    census_cost_service.get_comprehensive_costs,
-                    current_zip, dest_zip, 2
-                )
-                print(f"✓ Cost: ${data['destination']['total_monthly']:,.2f}/month")
-                print(f"  Affordability: {data['destination']['affordability_score']}/100")
-                return data
-            except Exception as e:
-                print(f"⚠️  Census cost service error (using fallback): {e}")
-                return await asyncio.to_thread(
-                    cost_service.compare_costs,
-                    request.current_address, request.destination_address
-                )
+            data = cost_service.compare_costs(
+                request.current_address, request.destination_address
+            )
+            print(f"✓ Cost: ${data['destination']['total_monthly']:,.2f}/month"
+                  f" | Affordability: {data['destination']['affordability_score']}/100")
+            return data
 
         async def fetch_commute():
             if is_work_from_home:

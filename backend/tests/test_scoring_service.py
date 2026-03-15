@@ -1,7 +1,5 @@
 """
 Unit tests for ScoringService.
-
-These tests exercise the pure business logic with no DB or HTTP calls.
 """
 import pytest
 from app.services.scoring_service import ScoringService
