@@ -252,18 +252,15 @@ async def create_analysis(
             commute_data,
         ) = await asyncio.gather(
             fetch_crime(),
-            asyncio.to_thread(
-                noise_service.estimate_noise_level,
+            noise_service.estimate_noise_level(
                 request.current_address, user_noise_pref
             ),
-            asyncio.to_thread(
-                noise_service.estimate_noise_level,
+            noise_service.estimate_noise_level(
                 request.destination_address, user_noise_pref
             ),
-            asyncio.to_thread(
-                noise_service.compare_noise_levels,
+            noise_service.compare_noise_levels(
                 request.current_address, request.destination_address,
-                user_preferences.get('sleep_schedule'), user_noise_pref
+                user_noise_pref
             ),
             fetch_cost(),
             asyncio.to_thread(
