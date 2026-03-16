@@ -1,6 +1,8 @@
-import httpx
+import re
 import asyncio
-from typing import Dict, Any, Optional, Tuple
+import httpx
+from datetime import datetime
+from typing import Any, Dict, Optional, Tuple
 
 # Fixed hourly crime weight distribution (index = hour 0-23)
 # Based on FBI UCR patterns: higher weight = more crime
@@ -22,9 +24,9 @@ _LOCAL_POP = 25_000
 
 class CrimeService:
     """
-    Crime comparison service backed by FBI Crime Data Explorer API.
-    Falls back to static FBI UCR 2022 city/state averages when the API
-    is unavailable. All outputs are deterministic — no random numbers.
+    Crime comparison service.
+    Primary: FBI Crime Data Explorer API (real data).
+    Fallback: static FBI UCR 2022 city/state averages.
     """
 
     def __init__(self):
@@ -34,26 +36,6 @@ class CrimeService:
             self.api_key = getattr(settings, 'FBI_API_KEY', None)
         except Exception:
             self.api_key = None
-
-        # Full state name → abbreviation
-        self._state_names: Dict[str, str] = {
-            'california': 'CA', 'texas': 'TX', 'new york': 'NY', 'florida': 'FL',
-            'illinois': 'IL', 'pennsylvania': 'PA', 'ohio': 'OH', 'georgia': 'GA',
-            'north carolina': 'NC', 'michigan': 'MI', 'new jersey': 'NJ',
-            'virginia': 'VA', 'washington': 'WA', 'arizona': 'AZ',
-            'massachusetts': 'MA', 'tennessee': 'TN', 'indiana': 'IN',
-            'missouri': 'MO', 'maryland': 'MD', 'wisconsin': 'WI',
-            'colorado': 'CO', 'minnesota': 'MN', 'south carolina': 'SC',
-            'alabama': 'AL', 'louisiana': 'LA', 'kentucky': 'KY',
-            'oregon': 'OR', 'oklahoma': 'OK', 'connecticut': 'CT',
-            'utah': 'UT', 'iowa': 'IA', 'nevada': 'NV', 'arkansas': 'AR',
-            'mississippi': 'MS', 'kansas': 'KS', 'new mexico': 'NM',
-            'nebraska': 'NE', 'idaho': 'ID', 'hawaii': 'HI',
-            'new hampshire': 'NH', 'maine': 'ME', 'rhode island': 'RI',
-            'montana': 'MT', 'delaware': 'DE', 'south dakota': 'SD',
-            'north dakota': 'ND', 'alaska': 'AK', 'vermont': 'VT',
-            'wyoming': 'WY', 'west virginia': 'WV',
-        }
 
         # Static FBI UCR 2022 crime rates per 100k (violent + property combined)
         self._city_rates: Dict[str, float] = {
@@ -80,20 +62,108 @@ class CrimeService:
             'connecticut': 2100,
         }
 
-    # ── Address helpers ────────────────────────────────────────────────────────
+    # ── Address helper ─────────────────────────────────────────────────────────
 
     def _state_from_address(self, address: str) -> Optional[str]:
-        """Extract 2-letter state code from a free-text address."""
-        lower = address.lower()
-        for name, code in self._state_names.items():
-            if name in lower:
+        """Extract a 2-letter US state code from a geocoded address string."""
+        # Google-geocoded addresses look like "..., Atlanta, GA 30313, USA"
+        match = re.search(r',\s*([A-Z]{2})\b', address)
+        if match:
+            code = match.group(1)
+            if code not in ('US',):
                 return code
-        # Try trailing token like "Austin, TX 78701"
-        parts = address.split(',')
-        if len(parts) >= 2:
-            token = parts[-1].strip().split()[0]
-            if len(token) == 2 and token.isalpha():
-                return token.upper()
+        return None
+
+    # ── FBI API ────────────────────────────────────────────────────────────────
+
+    def _extract_rate(self, data: Any) -> Optional[float]:
+        """
+        Pull a crime rate (per 100k) from an FBI CDE API response.
+        Handles multiple response shapes the API has used over time.
+        """
+        if not data:
+            return None
+
+        # Shape A: list or {"results": [...]} with count + population
+        rows = data if isinstance(data, list) else data.get('results') or data.get('data', [])
+        if isinstance(rows, list) and rows:
+            row = rows[0]
+            if isinstance(row, dict):
+                pop = row.get('population') or row.get('pop')
+                for key in ('violent_crime', 'property_crime', 'offense_count', 'actual'):
+                    count = row.get(key)
+                    if count and pop and pop > 0:
+                        return round(float(count) / float(pop) * 100_000, 1)
+                for key in ('rate', 'crime_rate', 'rate_per_100k'):
+                    rate = row.get(key)
+                    if rate and float(rate) > 0:
+                        return float(rate)
+
+        # Shape B: {"offenses": {"rates": {month: {key: value}}}}
+        if isinstance(data, dict) and 'offenses' in data:
+            rates_dict = data['offenses'].get('rates', {})
+            values = [
+                v for month in rates_dict.values()
+                if isinstance(month, dict)
+                for v in month.values()
+                if v is not None and isinstance(v, (int, float)) and v > 0
+            ]
+            if values:
+                return round(sum(values) / len(values), 1)
+
+        return None
+
+    async def _fetch_fbi_rate(self, address: str) -> Optional[Tuple[float, str]]:
+        """
+        Fetch crime rate per 100k from the FBI CDE API.
+        Returns (rate, source_label) or None if unavailable.
+        Tries violent + property endpoints; estimates the other if only one succeeds.
+        """
+        state = self._state_from_address(address)
+        if not state:
+            print(f"   ⚠️ FBI API: could not extract state from '{address}'")
+            return None
+
+        current_year = datetime.now().year
+        for year in [current_year - 1, current_year - 2, current_year - 3]:
+            params: Dict[str, Any] = {'from': f'01-{year}', 'to': f'12-{year}'}
+            if self.api_key:
+                params['api_key'] = self.api_key
+
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    v_resp, p_resp = await asyncio.gather(
+                        client.get(f"{self.fbi_api_base}/summarized/state/{state}/V", params=params),
+                        client.get(f"{self.fbi_api_base}/summarized/state/{state}/P", params=params),
+                    )
+
+                print(f"   FBI API {state} {year}: V={v_resp.status_code} P={p_resp.status_code}")
+
+                v_data = v_resp.json() if v_resp.status_code == 200 else None
+                p_data = p_resp.json() if p_resp.status_code == 200 else None
+
+                print(f"   FBI raw violent[:120]: {str(v_data)[:120]}")
+                print(f"   FBI raw property[:120]: {str(p_data)[:120]}")
+
+                violent_rate  = self._extract_rate(v_data)
+                property_rate = self._extract_rate(p_data)
+
+                if violent_rate is None and property_rate is None:
+                    print(f"   ⚠️ FBI API: unrecognised response format for {state} {year}")
+                    continue
+
+                v = violent_rate or 0.0
+                p = property_rate or round(v * 3.5, 1)   # property ~3.5× violent nationally
+                total = round(v + p, 1)
+
+                if total > 0:
+                    print(f"   ✓ FBI API {state} {year}: {v:.0f} violent + {p:.0f} property = {total:.0f}/100k")
+                    return total, f'FBI Crime Data Explorer ({year})'
+
+            except Exception as e:
+                print(f"   ⚠️ FBI API error ({state} {year}): {e}")
+                continue
+
         return None
 
     def _static_rate(self, address: str) -> float:
@@ -107,65 +177,13 @@ class CrimeService:
                 return rate
         return 3500.0  # US national average
 
-    # ── FBI API ────────────────────────────────────────────────────────────────
-
-    async def _fetch_fbi_rate(self, address: str) -> Optional[float]:
-        """
-        Try to fetch a crime rate (per 100k) from the FBI CDE API.
-        Returns None if the API is unavailable or data is unrecognisable.
-        """
-        state = self._state_from_address(address)
-        if not state:
-            return None
-
-        from datetime import datetime
-        current_year = datetime.now().year
-
-        for year in [current_year - 1, current_year - 2]:
-            params: Dict[str, Any] = {
-                'from': f'01-{year}',
-                'to': f'12-{year}',
-            }
-            if self.api_key:
-                params['api_key'] = self.api_key
-
-            try:
-                async with httpx.AsyncClient(timeout=8.0) as client:
-                    # Violent crimes (V) for the state
-                    resp = await client.get(
-                        f"{self.fbi_api_base}/summarized/state/{state}/V",
-                        params=params,
-                    )
-                if resp.status_code != 200:
-                    continue
-                data = resp.json()
-
-                # Response may be a list or {"results": [...]}
-                results = data if isinstance(data, list) else data.get('results', [])
-                if not results:
-                    continue
-
-                row = results[0] if isinstance(results, list) else results
-                violent = float(row.get('violent_crime', 0) or 0)
-                prop = float(row.get('property_crime', 0) or 0)
-                total = violent + prop
-                if total > 0:
-                    print(f"   FBI API: {state} {year} → {total:.0f}/100k")
-                    return total
-
-            except Exception as e:
-                print(f"   FBI API error ({state} {year}): {e}")
-                continue
-
-        return None
-
     # ── Core metrics ───────────────────────────────────────────────────────────
 
     async def _get_rate(self, address: str) -> Tuple[float, str]:
-        """Return (crime_rate_per_100k, data_source)."""
-        rate = await self._fetch_fbi_rate(address)
-        if rate:
-            return rate, 'FBI Crime Data Explorer'
+        """Return (crime_rate_per_100k, data_source). Tries FBI API first."""
+        result = await self._fetch_fbi_rate(address)
+        if result:
+            return result
         return self._static_rate(address), 'FBI UCR 2022 (City Averages)'
 
     def _rate_to_safety_score(self, rate: float) -> float:
@@ -245,7 +263,7 @@ class CrimeService:
     ) -> Dict[str, Any]:
         """
         Compare crime between two locations.
-        Always returns a consistent structure with deterministic values.
+        Fetches both locations from FBI API in parallel; falls back to static data.
         """
         (current_rate, current_src), (dest_rate, dest_src) = await asyncio.gather(
             self._get_rate(current_address),
