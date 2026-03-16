@@ -99,17 +99,18 @@ class CrimeService:
                     if rate and float(rate) > 0:
                         return float(rate)
 
-        # Shape B: {"offenses": {"rates": {month: {key: value}}}}
+        # Shape B: {"offenses": {"rates": {"State Offenses": {"01-2025": 32.66, ...}}}}
+        # Each value is a monthly rate per 100k — sum all months for the annual rate.
         if isinstance(data, dict) and 'offenses' in data:
             rates_dict = data['offenses'].get('rates', {})
-            values = [
-                v for month in rates_dict.values()
-                if isinstance(month, dict)
-                for v in month.values()
+            monthly_values = [
+                v for month_data in rates_dict.values()
+                if isinstance(month_data, dict)
+                for v in month_data.values()
                 if v is not None and isinstance(v, (int, float)) and v > 0
             ]
-            if values:
-                return round(sum(values) / len(values), 1)
+            if monthly_values:
+                return round(sum(monthly_values), 1)
 
         return None
 
