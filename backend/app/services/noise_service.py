@@ -69,6 +69,7 @@ class NoiseService:
         Response shape: {"status":"OK","result":[{score, traffic, local, airports, ...}]}
         """
         if not self.howloud_api_key:
+            print(f"   ⚠️ HowLoud API key not set (HOWLOUD_API_KEY env var missing)")
             return None
         try:
             async with httpx.AsyncClient(timeout=8.0) as client:
@@ -82,7 +83,9 @@ class NoiseService:
                     result = data.get('result', [])
                     if result and 'score' in result[0]:
                         return result[0]
-                print(f"   ⚠️ HowLoud API: HTTP {resp.status_code}")
+                    print(f"   ⚠️ HowLoud API: unexpected response shape: {str(data)[:120]}")
+                else:
+                    print(f"   ⚠️ HowLoud API: HTTP {resp.status_code} – {resp.text[:120]}")
         except Exception as e:
             print(f"   ⚠️ HowLoud API error: {e}")
         return None
