@@ -60,7 +60,7 @@ Provide clear, data-driven insights with a friendly, personalized tone. Focus on
                     }
                 ],
                 model="llama-3.3-70b-versatile",
-                temperature=0.7,
+                temperature=0.9,
                 max_tokens=2500
             )
             
@@ -121,9 +121,9 @@ CURRENT LOCATION:
 
 Crime Types:
 • Violent: {current_crime.get('categories', {}).get('violent', 0)}
-• Property: {current_crime.get('categories', {}).get('property', 0)}
 • Larceny: {current_crime.get('categories', {}).get('larceny', 0)}
 • Burglary: {current_crime.get('categories', {}).get('burglary', 0)}
+• Other Property: {current_crime.get('categories', {}).get('other_property', 0)}
 
 Temporal Analysis:
 • During Sleep Hours (10PM-6AM): {current_crime.get('temporal_analysis', {}).get('crimes_during_sleep_hours', 0)} crimes
@@ -139,9 +139,9 @@ DESTINATION LOCATION:
 
 Crime Types:
 • Violent: {dest_crime.get('categories', {}).get('violent', 0)}
-• Property: {dest_crime.get('categories', {}).get('property', 0)}
 • Larceny: {dest_crime.get('categories', {}).get('larceny', 0)}
 • Burglary: {dest_crime.get('categories', {}).get('burglary', 0)}
+• Other Property: {dest_crime.get('categories', {}).get('other_property', 0)}
 
 Temporal Analysis:
 • During Sleep Hours (10PM-6AM): {dest_crime.get('temporal_analysis', {}).get('crimes_during_sleep_hours', 0)} crimes
@@ -291,7 +291,7 @@ Based on this REAL DATA, provide:
    - Cost (reference actual dollar amounts)
    - Be SPECIFIC with data points, not generic
 
-3. DETAILED INSIGHTS (3-4 paragraphs)
+3. DETAILED INSIGHTS (2-3 paragraphs)
    - Deep dive into the most significant changes
    - Reference specific numbers from the data
    - Explain what the data means for daily life
@@ -322,7 +322,7 @@ Format EXACTLY as:
 ✓ [Change 6 with specific data]
 
 ---INSIGHTS---
-[3-4 detailed paragraphs with data interpretation]
+[2-3 detailed paragraphs with data interpretation]
 
 ---ACTION_STEPS---
 → [Step 1: Specific action]

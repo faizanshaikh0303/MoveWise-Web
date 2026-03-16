@@ -2,7 +2,7 @@ import re
 import asyncio
 import httpx
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 # Fixed hourly crime weight distribution (index = hour 0-23)
 # Based on FBI UCR patterns: higher weight = more crime
@@ -10,12 +10,14 @@ _HOUR_WEIGHTS = [3,3,2,2,2,2,3,4,3,3,3,3,3,3,3,4,4,5,6,7,8,7,5,4]
 _TOTAL_WEIGHT = sum(_HOUR_WEIGHTS)  # 92
 
 # Fallback category ratios when FBI category endpoints are unavailable (FBI UCR averages)
+# Property is split into its components — larceny, burglary, other_property — to avoid
+# double-counting (larceny and burglary are subsets of property crime).
 _CATEGORY_RATIOS = {
-    'violent':   0.13,
-    'property':  0.22,
-    'larceny':   0.50,
-    'burglary':  0.11,
-    'other':     0.04,
+    'violent':        0.20,
+    'larceny':        0.48,
+    'burglary':       0.14,
+    'other_property': 0.14,  # motor vehicle theft, arson, etc.
+    'other':          0.04,
 }
 
 # Local population assumed for a walkable 1–2 mile radius around the address
@@ -37,7 +39,6 @@ class CrimeService:
         except Exception:
             self.api_key = None
 
-        # Static FBI UCR 2022 crime rates per 100k (violent + property combined)
         self._city_rates: Dict[str, float] = {
             'memphis': 8912, 'st louis': 8234, 'detroit': 7234,
             'baltimore': 7567, 'oakland': 7721,
@@ -52,17 +53,34 @@ class CrimeService:
             'new york': 2331, 'nyc': 2331,
         }
 
+        # Static FBI UCR 2022 crime rates per 100k (violent + property combined), all 50 states
         self._state_rates: Dict[str, float] = {
-            'nevada': 4800, 'new mexico': 4700, 'alaska': 4600,
-            'california': 4500, 'colorado': 4300, 'arizona': 4400,
-            'washington': 4100, 'oregon': 4000, 'florida': 3900,
-            'texas': 4200, 'illinois': 3600, 'georgia': 4100,
-            'south carolina': 4200, 'louisiana': 4300, 'arkansas': 4100,
-            'tennessee': 3900, 'new york': 2800, 'massachusetts': 2200,
-            'connecticut': 2100,
+            'NM': 4700, 'AK': 4600, 'LA': 4300, 'OK': 4300, 'SC': 4200,
+            'TX': 4200, 'AL': 4200, 'MO': 4500, 'NV': 4800, 'CO': 4300,
+            'AZ': 4400, 'CA': 4500, 'AR': 4100, 'GA': 4100, 'WA': 4100,
+            'MD': 4000, 'OR': 4000, 'MI': 4000, 'MT': 3900, 'FL': 3900,
+            'TN': 3900, 'MS': 3800, 'KS': 3400, 'WV': 3400, 'IN': 3500,
+            'NC': 3500, 'UT': 3500, 'IL': 3600, 'OH': 3300, 'MN': 3200,
+            'SD': 3200, 'DE': 3200, 'NE': 3000, 'KY': 3000, 'PA': 2900,
+            'WI': 2900, 'HI': 2900, 'IA': 2800, 'ND': 2800, 'VA': 2800,
+            'NY': 2800, 'RI': 2700, 'WY': 2600, 'ID': 2500, 'NJ': 2500,
+            'MA': 2200, 'ME': 2200, 'CT': 2100, 'NH': 2000, 'VT': 2000,
         }
 
-    # ── Address helper ─────────────────────────────────────────────────────────
+    # ── Helpers ────────────────────────────────────────────────────────────────
+
+    def _parse_hour_range(self, time_str: str) -> set:
+        """Parse 'HH:MM - HH:MM' into a set of hours, handling midnight wrap-around."""
+        try:
+            start_str, end_str = time_str.split(' - ')
+            start = int(start_str.split(':')[0])
+            end   = int(end_str.split(':')[0])
+            if start < end:
+                return set(range(start, end))
+            else:  # wraps midnight (e.g. 23:00 - 07:00)
+                return set(range(start, 24)) | set(range(0, end))
+        except Exception:
+            return set()
 
     def _state_from_address(self, address: str) -> Optional[str]:
         """Extract a 2-letter US state code from a geocoded address string."""
@@ -78,29 +96,13 @@ class CrimeService:
 
     def _extract_rate(self, data: Any) -> Optional[float]:
         """
-        Pull a crime rate (per 100k) from an FBI CDE API response.
-        Handles multiple response shapes the API has used over time.
+        Pull an annual crime rate (per 100k) from an FBI CDE summarized state API response.
+        Response shape: {'offenses': {'rates': {'State Offenses': {'01-2025': 32.66, ...}}}}
+        Each value is a monthly rate per 100k — sum all months for the annual rate.
         """
         if not data:
             return None
 
-        # Shape A: list or {"results": [...]} with count + population
-        rows = data if isinstance(data, list) else data.get('results') or data.get('data', [])
-        if isinstance(rows, list) and rows:
-            row = rows[0]
-            if isinstance(row, dict):
-                pop = row.get('population') or row.get('pop')
-                for key in ('violent_crime', 'property_crime', 'offense_count', 'actual'):
-                    count = row.get(key)
-                    if count and pop and pop > 0:
-                        return round(float(count) / float(pop) * 100_000, 1)
-                for key in ('rate', 'crime_rate', 'rate_per_100k'):
-                    rate = row.get(key)
-                    if rate and float(rate) > 0:
-                        return float(rate)
-
-        # Shape B: {"offenses": {"rates": {"State Offenses": {"01-2025": 32.66, ...}}}}
-        # Each value is a monthly rate per 100k — sum all months for the annual rate.
         if isinstance(data, dict) and 'offenses' in data:
             rates_dict = data['offenses'].get('rates', {})
             monthly_values = [
@@ -131,7 +133,7 @@ class CrimeService:
                 params['api_key'] = self.api_key
 
             try:
-                async with httpx.AsyncClient(timeout=10.0) as client:
+                async with httpx.AsyncClient(timeout=15.0) as client:
                     v_resp, p_resp, l_resp, d_resp = await asyncio.gather(
                         client.get(f"{self.fbi_api_base}/summarized/state/{state}/V", params=params),
                         client.get(f"{self.fbi_api_base}/summarized/state/{state}/P", params=params),
@@ -188,9 +190,9 @@ class CrimeService:
         for city, rate in self._city_rates.items():
             if city in lower:
                 return rate
-        for state, rate in self._state_rates.items():
-            if state in lower:
-                return rate
+        state = self._state_from_address(address)
+        if state and state in self._state_rates:
+            return self._state_rates[state]
         return 3500.0  # US national average
 
     # ── Core metrics ───────────────────────────────────────────────────────────
@@ -221,10 +223,11 @@ class CrimeService:
         if rate < 7500:  return 30.0
         return 20.0
 
-    def _build_location_data(self, fbi: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_location_data(self, fbi: Dict[str, Any], user_preferences: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Build the complete location crime dict from FBI rate data.
         Uses real FBI category rates when available; falls back to national ratios.
+        Schedule-based aggregates use the user's actual work/sleep hours when provided.
         """
         rate   = fbi['total']
         source = fbi['source']
@@ -237,21 +240,40 @@ class CrimeService:
                 return round(cat_rate / 100_000 * _LOCAL_POP / 12)
             return round(total_crimes * fallback_ratio)
 
+        violent_crimes  = _cat_crimes(fbi.get('violent'),  _CATEGORY_RATIOS['violent'])
+        larceny_crimes  = _cat_crimes(fbi.get('larceny'),  _CATEGORY_RATIOS['larceny'])
+        burglary_crimes = _cat_crimes(fbi.get('burglary'), _CATEGORY_RATIOS['burglary'])
+
+        # other_property = property crimes not covered by larceny or burglary (MVT, arson, etc.)
+        # Derived from real property rate when available; falls back to ratio.
+        if fbi.get('property') is not None:
+            property_crimes = round(fbi['property'] / 100_000 * _LOCAL_POP / 12)
+            other_property = max(0, property_crimes - larceny_crimes - burglary_crimes)
+        else:
+            other_property = _cat_crimes(None, _CATEGORY_RATIOS['other_property'])
+
         categories = {
-            'violent':  _cat_crimes(fbi.get('violent'),  _CATEGORY_RATIOS['violent']),
-            'property': _cat_crimes(fbi.get('property'), _CATEGORY_RATIOS['property']),
-            'larceny':  _cat_crimes(fbi.get('larceny'),  _CATEGORY_RATIOS['larceny']),
-            'burglary': _cat_crimes(fbi.get('burglary'), _CATEGORY_RATIOS['burglary']),
-            'other':    round(total_crimes * _CATEGORY_RATIOS['other']),
+            'violent':        violent_crimes,
+            'larceny':        larceny_crimes,
+            'burglary':       burglary_crimes,
+            'other_property': other_property,
+            'other':          round(total_crimes * _CATEGORY_RATIOS['other']),
         }
 
         # Hourly distribution (deterministic, scaled to total_crimes)
         hourly = [round(total_crimes * w / _TOTAL_WEIGHT) for w in _HOUR_WEIGHTS]
 
-        # Schedule-based aggregates
-        sleep_hours  = set(range(22, 24)) | set(range(0, 6))   # 10 PM – 6 AM
-        work_hours   = set(range(9, 17))                        # 9 AM – 5 PM
-        commute_hours = {7, 8, 17, 18}                          # rush hours
+        # Schedule-based aggregates derived from user profile, with defaults
+        prefs = user_preferences or {}
+        sleep_hours   = self._parse_hour_range(prefs.get('sleep_hours', '23:00 - 07:00')) or \
+                        (set(range(23, 24)) | set(range(0, 7)))
+        work_hours    = self._parse_hour_range(prefs.get('work_hours', '9:00 - 17:00')) or \
+                        set(range(9, 17))
+        # Commute: 2 hours bracketing the start and end of the work window
+        work_start    = min(work_hours) if work_hours else 9
+        work_end      = max(work_hours) + 1 if work_hours else 17
+        commute_hours = {(work_start - 2) % 24, (work_start - 1) % 24,
+                         work_end % 24, (work_end + 1) % 24}
 
         crimes_sleep   = sum(hourly[h] for h in sleep_hours)
         crimes_work    = sum(hourly[h] for h in work_hours)
@@ -297,18 +319,20 @@ class CrimeService:
         dest_lat: float,
         dest_lng: float,
         dest_address: str,
+        user_preferences: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Compare crime between two locations.
         Fetches both locations from FBI API in parallel; falls back to static data.
+        Uses user_preferences for schedule-based temporal analysis.
         """
         current_fbi, dest_fbi = await asyncio.gather(
             self._get_rates(current_address),
             self._get_rates(dest_address),
         )
 
-        current_data = self._build_location_data(current_fbi)
-        dest_data    = self._build_location_data(dest_fbi)
+        current_data = self._build_location_data(current_fbi, user_preferences)
+        dest_data    = self._build_location_data(dest_fbi, user_preferences)
 
         crime_diff = dest_data['total_crimes'] - current_data['total_crimes']
         pct_change = round(

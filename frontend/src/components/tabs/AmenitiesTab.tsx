@@ -13,7 +13,10 @@ import {
   GraduationCap,
   BookOpen,
   Trophy,
-  Mountain
+  Mountain,
+  TrainFront,
+  Bus,
+  Plane
 } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow, Circle } from '@react-google-maps/api';
 
@@ -60,7 +63,10 @@ const AmenitiesTab = ({ data }: any) => {
     'schools': { icon: GraduationCap, color: '#6366f1', markerColor: '#6366f1' },
     'libraries': { icon: BookOpen, color: '#7c3aed', markerColor: '#7c3aed' },
     'hiking trails': { icon: Mountain, color: '#15803d', markerColor: '#15803d' },
-    'sports venues': { icon: Trophy, color: '#b45309', markerColor: '#b45309' }
+    'sports venues': { icon: Trophy, color: '#b45309', markerColor: '#b45309' },
+    'train stations': { icon: TrainFront, color: '#0ea5e9', markerColor: '#0ea5e9' },
+    'bus stations':   { icon: Bus,        color: '#f59e0b', markerColor: '#f59e0b' },
+    'airports':       { icon: Plane,      color: '#6366f1', markerColor: '#6366f1' },
   };
 
   // Get all markers for the map - with proper typing

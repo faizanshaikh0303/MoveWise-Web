@@ -38,11 +38,6 @@ const CrimeTab = ({ data }) => {
       destination: destination.categories?.violent || 0
     },
     {
-      name: 'Property',
-      current: current.categories?.property || 0,
-      destination: destination.categories?.property || 0
-    },
-    {
       name: 'Larceny',
       current: current.categories?.larceny || 0,
       destination: destination.categories?.larceny || 0
@@ -51,6 +46,11 @@ const CrimeTab = ({ data }) => {
       name: 'Burglary',
       current: current.categories?.burglary || 0,
       destination: destination.categories?.burglary || 0
+    },
+    {
+      name: 'Other Property',
+      current: current.categories?.other_property || 0,
+      destination: destination.categories?.other_property || 0
     }
   ];
 

@@ -1,3 +1,4 @@
+import re
 from typing import Dict, Any
 
 # US national median monthly expenses (single person, 2024)
@@ -52,20 +53,16 @@ class CostService:
         }
 
         self._state_costs: Dict[str, float] = {
-            'hawaii':         4200, 'california':    3800, 'new york':      3500,
-            'massachusetts':  3600, 'washington':    3400, 'new jersey':    3400,
-            'maryland':       3300, 'connecticut':   3300, 'colorado':      3300,
-            'oregon':         3200, 'virginia':      3100, 'illinois':      3000,
-            'minnesota':      2900, 'florida':       2900, 'texas':         2800,
-            'nevada':         2800, 'georgia':       2800, 'arizona':       2700,
-            'north carolina': 2700, 'pennsylvania':  2700, 'utah':          2600,
-            'tennessee':      2600, 'wisconsin':     2600, 'idaho':         2500,
-            'south carolina': 2500, 'ohio':          2500, 'michigan':      2500,
-            'louisiana':      2500, 'indiana':       2400, 'kentucky':      2400,
-            'missouri':       2400, 'kansas':        2400, 'nebraska':      2400,
-            'iowa':           2300, 'alabama':       2300, 'new mexico':    2300,
-            'oklahoma':       2200, 'arkansas':      2200, 'west virginia': 2200,
-            'mississippi':    2100,
+            'HI': 4200, 'CA': 3800, 'NY': 3500, 'MA': 3600, 'WA': 3400,
+            'NJ': 3400, 'MD': 3300, 'CT': 3300, 'CO': 3300, 'OR': 3200,
+            'VA': 3100, 'IL': 3000, 'MN': 2900, 'FL': 2900, 'TX': 2800,
+            'NV': 2800, 'GA': 2800, 'AZ': 2700, 'NC': 2700, 'PA': 2700,
+            'UT': 2600, 'TN': 2600, 'WI': 2600, 'ID': 2500, 'SC': 2500,
+            'OH': 2500, 'MI': 2500, 'LA': 2500, 'IN': 2400, 'KY': 2400,
+            'MO': 2400, 'KS': 2400, 'NE': 2400, 'IA': 2300, 'AL': 2300,
+            'NM': 2300, 'OK': 2200, 'AR': 2200, 'WV': 2200, 'MS': 2100,
+            'MT': 2300, 'WY': 2300, 'ND': 2300, 'SD': 2200, 'AK': 3600,
+            'VT': 3200, 'NH': 3100, 'ME': 2900, 'RI': 3100, 'DE': 3000,
         }
 
     # ── Lookup ─────────────────────────────────────────────────────────────────
@@ -75,9 +72,11 @@ class CostService:
         for city, cost in self._city_costs.items():
             if city in lower:
                 return float(cost)
-        for state, cost in self._state_costs.items():
-            if state in lower:
-                return float(cost)
+        match = re.search(r',\s*([A-Z]{2})\b', address)
+        if match:
+            code = match.group(1)
+            if code in self._state_costs:
+                return float(self._state_costs[code])
         return _NATIONAL_MEDIAN
 
     # ── Scoring ────────────────────────────────────────────────────────────────
@@ -119,7 +118,7 @@ class CostService:
             'total_annual':       round(total * 12, 2),
             'affordability_score': self._affordability_score(total),
             'cost_index':         cost_index,
-            'data_source':        'Cost of Living 2024 (City Averages)',
+            'data_source':        'Cost of Living 2025 (City Averages)',
             'housing': {
                 'monthly_rent': monthly_rent,
                 'annual_rent':  round(monthly_rent * 12, 2),

@@ -112,6 +112,7 @@ async def create_analysis(
             data = await crime_service.compare_crime_data(
                 current_lat, current_lng, request.current_address,
                 dest_lat, dest_lng, request.destination_address,
+                user_preferences=user_preferences,
             )
             print(f"✓ Crime: {data['destination']['total_crimes']} crimes/30 days"
                   f" | Safety Score: {data['destination']['safety_score']}/100"
@@ -195,20 +196,12 @@ async def create_analysis(
         print("🚀 Fetching crime, noise, cost, amenities, commute in parallel...")
         (
             crime_data,
-            noise_data_current,
-            noise_data_dest,
             noise_comparison,
             cost_data,
             amenities_data,
             commute_data,
         ) = await asyncio.gather(
             fetch_crime(),
-            noise_service.estimate_noise_level(
-                request.current_address, user_noise_pref
-            ),
-            noise_service.estimate_noise_level(
-                request.destination_address, user_noise_pref
-            ),
             noise_service.compare_noise_levels(
                 request.current_address, request.destination_address,
                 user_noise_pref
@@ -222,32 +215,34 @@ async def create_analysis(
             fetch_commute(),
         )
 
-        print(f"   Noise current: {noise_data_current['score']:.1f} dB → Score: {noise_data_current['noise_score']}/100")
-        print(f"   Noise dest:    {noise_data_dest['score']:.1f} dB → Score: {noise_data_dest['noise_score']}/100")
+        noise_current = noise_comparison['current']
+        noise_dest    = noise_comparison['destination']
+        print(f"   Noise current: {noise_current['score']:.1f} dB → Score: {noise_current['noise_score']}/100")
+        print(f"   Noise dest:    {noise_dest['score']:.1f} dB → Score: {noise_dest['noise_score']}/100")
         print(f"✓ Amenities: {amenities_data.get('destination', {}).get('total_count', 0)} places")
 
-        # Build noise_data dict from the parallel results
         noise_data = {
             'current': {
-                'estimated_db': noise_data_current['score'],
-                'noise_category': noise_data_current['noise_category'],
-                'noise_score': noise_data_current['noise_score'],
-                'description': noise_data_current['description']
+                'estimated_db':  noise_current['score'],
+                'noise_category': noise_current['noise_category'],
+                'noise_score':   noise_current['noise_score'],
+                'description':   noise_current['description'],
             },
             'destination': {
-                'estimated_db': noise_data_dest['score'],
-                'noise_category': noise_data_dest['noise_category'],
-                'noise_score': noise_data_dest['noise_score'],
-                'description': noise_data_dest['description'],
-                'preference_match': noise_data_dest['preference_match']
+                'estimated_db':  noise_dest['score'],
+                'noise_category': noise_dest['noise_category'],
+                'noise_score':   noise_dest['noise_score'],
+                'description':   noise_dest['description'],
+                'preference_match': noise_dest['preference_match'],
             },
             'comparison': {
-                'db_difference': noise_comparison['db_difference'],
-                'score_difference': noise_comparison['score_difference'],
-                'is_quieter': noise_comparison['db_difference'] < 0,
-                'category_change': f"{noise_data_current['noise_category']} → {noise_data_dest['noise_category']}",
-                'recommendation': noise_comparison['analysis']
-            }
+                'db_difference':    noise_comparison['comparison']['db_difference'],
+                'score_difference': noise_comparison['comparison']['score_difference'],
+                'is_quieter':       noise_comparison['comparison']['is_quieter'],
+                'category_change':  f"{noise_current['noise_category']} → {noise_dest['noise_category']}",
+                'recommendation':   noise_comparison['comparison']['analysis'],
+                'preference_match': noise_comparison['comparison']['preference_match'],
+            },
         }
 
         # ── Phase 5: scoring (CPU-only, no I/O) ──────────────────────────────

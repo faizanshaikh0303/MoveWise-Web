@@ -69,6 +69,9 @@ class PlacesService:
             ('grocery stores', {'type': 'grocery_or_supermarket'}),
             ('hospitals',      {'type': 'hospital'}),
             ('pharmacies',     {'type': 'pharmacy'}),
+            ('train stations', {'type': 'train_station'}),
+            ('bus stations',   {'type': 'bus_station'}),
+            ('airports',       {'type': 'airport'}),
         ]
 
         # Build ordered list of (display_name, search_params) to avoid duplicates
@@ -137,12 +140,18 @@ class PlacesService:
                     print(f"   ⚠️  {display_name}: 20 (API limit - may be more)")
                 elif result_count > 0:
                     print(f"   ✓ {display_name}: {result_count}")
+                else:
+                    print(f"   — {display_name}: 0 (will be hidden)")
 
             except Exception as e:
                 print(f"   ❌ Error fetching {display_name}: {e}")
                 counts[display_name] = 0
                 locations[display_name] = []
-        
+
+        # Drop categories with no results — they add no value to the UI
+        counts    = {k: v for k, v in counts.items()    if v > 0}
+        locations = {k: v for k, v in locations.items() if v}
+
         return counts, locations
     
     def compare_amenities(

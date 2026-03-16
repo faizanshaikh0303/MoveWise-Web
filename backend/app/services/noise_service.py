@@ -1,43 +1,53 @@
+import re
 import os
-import math
 import asyncio
 import httpx
 from typing import Dict, Any, List, Optional, Tuple
+
+# HowLoud SoundScore fallback values per state (score 0-100, higher = quieter).
+# Obtained by calling the HowLoud API at the most populous city in each state.
+# AK and HI returned 100 (outside HowLoud coverage) — substituted realistic estimates.
+_STATE_SCORES: Dict[str, int] = {
+    'AL': 67, 'AK': 75, 'AZ': 64, 'AR': 72, 'CA': 65,
+    'CO': 67, 'CT': 62, 'DE': 72, 'FL': 65, 'GA': 63,
+    'HI': 65, 'ID': 65, 'IL': 62, 'IN': 69, 'IA': 65,
+    'KS': 73, 'KY': 68, 'LA': 73, 'ME': 65, 'MD': 64,
+    'MA': 65, 'MI': 63, 'MN': 66, 'MS': 67, 'MO': 64,
+    'MT': 67, 'NE': 63, 'NV': 67, 'NH': 67, 'NJ': 65,
+    'NM': 68, 'NY': 65, 'NC': 66, 'ND': 74, 'OH': 70,
+    'OK': 64, 'OR': 54, 'PA': 64, 'RI': 66, 'SC': 64,
+    'SD': 64, 'TN': 74, 'TX': 62, 'UT': 67, 'VT': 69,
+    'VA': 61, 'WA': 61, 'WV': 65, 'WI': 64, 'WY': 70,
+}
 
 
 class NoiseService:
     """
     Estimate noise levels using a tiered approach:
-      1. HowLoud SoundScore API  – real calibrated scores (primary, US coverage)
-      2. Google Places + OpenStreetMap  – physics-based modelling (global fallback)
-      3. Static city lookup  – last resort if APIs are unavailable
+      1. HowLoud SoundScore API  – real calibrated score at the exact address
+      2. HowLoud state-level score – hardcoded HowLoud scores for each state's
+         major city, used when the per-address call fails
+      3. National average (HowLoud score 65) – if state cannot be extracted
     """
 
     def __init__(self):
-        self.google_api_key = os.getenv('GOOGLE_MAPS_API_KEY')
+        self.google_api_key  = os.getenv('GOOGLE_MAPS_API_KEY')
         self.howloud_api_key = os.getenv('HOWLOUD_API_KEY')
+        self.geocoding_url   = "https://maps.googleapis.com/maps/api/geocode/json"
+        self.howloud_url     = "https://api.howloud.com/v2/score"
 
-        self.geocoding_url = "https://maps.googleapis.com/maps/api/geocode/json"
-        self.places_url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
-        self.overpass_url = "https://overpass-api.de/api/interpreter"
-        self.howloud_url = "https://api.howloud.com/v2/score"
 
-        self._fallback_city_noise = {
-            'new york': 75, 'manhattan': 80, 'chicago': 72,
-            'los angeles': 70, 'san francisco': 65, 'boston': 65,
-            'seattle': 60, 'miami': 65, 'dallas': 60, 'houston': 60,
-            'philadelphia': 65, 'atlanta': 60, 'washington': 65,
-            'denver': 55, 'phoenix': 55, 'austin': 55, 'san diego': 55,
-            'portland': 55, 'nashville': 55, 'charlotte': 50,
-            'raleigh': 45, 'minneapolis': 55, 'san antonio': 55,
-        }
-        self._fallback_indicators = {
-            'downtown': 15, 'midtown': 12, 'city center': 15,
-            'financial district': 12, 'airport': 20, 'highway': 15,
-            'interstate': 15, 'avenue': 8, 'boulevard': 8,
-            'suburb': -15, 'residential': -10, 'quiet': -15,
-            'park': -12, 'hills': -10, 'rural': -20,
-        }
+    # ── Address helper ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _state_from_address(address: str) -> Optional[str]:
+        """Extract a 2-letter US state code from a geocoded address string."""
+        match = re.search(r',\s*([A-Z]{2})\b', address)
+        if match:
+            code = match.group(1)
+            if code != 'US':
+                return code
+        return None
 
     # ── Geocoding ─────────────────────────────────────────────────────────────
 
@@ -46,7 +56,7 @@ class NoiseService:
         if not self.google_api_key:
             return None
         try:
-            async with httpx.AsyncClient(timeout=8.0) as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(self.geocoding_url, params={
                     'address': address,
                     'key': self.google_api_key,
@@ -60,7 +70,7 @@ class NoiseService:
             print(f"   ⚠️ Geocoding error: {e}")
         return None
 
-    # ── HowLoud API (primary) ─────────────────────────────────────────────────
+    # ── HowLoud API ───────────────────────────────────────────────────────────
 
     async def _fetch_howloud_score(self, lat: float, lng: float) -> Optional[Dict]:
         """
@@ -90,234 +100,84 @@ class NoiseService:
             print(f"   ⚠️ HowLoud API error: {e}")
         return None
 
+    @staticmethod
+    def _score_to_db(score: float) -> float:
+        """
+        Convert HowLoud SoundScore (0 = very loud, 100 = very quiet) to ambient dB.
+        Uses piecewise linear interpolation anchored to HowLoud's own categories
+        and real-world dB ranges:
+          Score   0–25  → 85–75 dB  (Extremely Loud)
+          Score  26–50  → 75–70 dB  (Very Loud)
+          Score  51–60  → 70–65 dB  (Loud)
+          Score  61–70  → 65–55 dB  (Moderate)
+          Score  71–80  → 55–45 dB  (Quiet)
+          Score  81–100 → 45–35 dB  (Very Quiet)
+        """
+        breakpoints = [(0, 85), (25, 75), (50, 70), (60, 65), (70, 55), (80, 45), (100, 35)]
+        s = max(0.0, min(100.0, score))
+        for i in range(len(breakpoints) - 1):
+            s0, db0 = breakpoints[i]
+            s1, db1 = breakpoints[i + 1]
+            if s0 <= s <= s1:
+                t = (s - s0) / (s1 - s0)
+                return round(db0 + t * (db1 - db0), 1)
+        return 35.0
+
     def _howloud_to_result(self, data: Dict, user_preference: str) -> Dict[str, Any]:
-        """
-        Convert a HowLoud SoundScore response to our standard result format.
-
-        SoundScore mapping (0 = very loud, 100 = silent):
-          estimated_dB = 85 − score × 0.45
-          Score 90 → ~44 dB (quiet)
-          Score 70 → ~54 dB (quiet-moderate)
-          Score 50 → ~63 dB (moderate urban)
-          Score 30 → ~72 dB (noisy)
-          Score 10 → ~81 dB (very noisy)
-        """
+        """Convert a HowLoud SoundScore API response to our standard result format."""
         score = float(data.get('score', 50))
-        estimated_db = round(max(35.0, min(85.0, 85.0 - score * 0.45)), 1)
+        estimated_db = self._score_to_db(score)
 
-        # Build indicators from component impact scores (higher = more noise)
         indicators: List[str] = []
-        airports_impact = data.get('airports', 0)
-        traffic_impact = data.get('traffic', 0)
-        local_impact = data.get('local', 0)
-
-        if airports_impact > 0:
+        if data.get('airports', 0) > 0:
             indicators.append('airport noise')
-        if traffic_impact > 30:
+        if data.get('traffic', 0) > 30:
             indicators.append('highway traffic')
-        elif traffic_impact > 10:
+        elif data.get('traffic', 0) > 10:
             indicators.append('road traffic')
-        if local_impact > 20:
+        if data.get('local', 0) > 20:
             indicators.append('local activity')
         if not indicators:
             indicators = ['residential area']
 
-        noise_category = self.categorize_noise_by_db(estimated_db)
-        preference_score = self.calculate_preference_score(estimated_db, noise_category, user_preference)
+        noise_category    = self.categorize_noise_by_db(estimated_db)
+        preference_score  = self.calculate_preference_score(estimated_db, noise_category, user_preference)
         level, description = self._level_description(estimated_db)
-        preference_match = self._check_preference_match(noise_category, user_preference)
-
-        # Use HowLoud's own description if available
+        preference_match  = self._check_preference_match(noise_category, user_preference)
         scoretext = data.get('scoretext', '').strip()
 
         print(f"   🔊 HowLoud SoundScore: {score:.0f}/100 → {estimated_db:.1f} dB ({noise_category})")
+        return self._build_result(estimated_db, scoretext or description, indicators,
+                                  preference_score, noise_category, level, preference_match,
+                                  'HowLoud SoundScore API')
+
+    def _state_score_to_result(self, score: int, user_preference: str) -> Dict[str, Any]:
+        """Convert a hardcoded HowLoud state score to our standard result format."""
+        estimated_db = self._score_to_db(float(score))
+        noise_category    = self.categorize_noise_by_db(estimated_db)
+        preference_score  = self.calculate_preference_score(estimated_db, noise_category, user_preference)
+        level, description = self._level_description(estimated_db)
+        preference_match  = self._check_preference_match(noise_category, user_preference)
+        return self._build_result(estimated_db, description, [],
+                                  preference_score, noise_category, level, preference_match,
+                                  'HowLoud SoundScore (State Average)')
+
+    @staticmethod
+    def _build_result(
+        score: float, description: str, indicators: List[str],
+        noise_score: float, noise_category: str, level: str,
+        preference_match: Dict, data_source: str,
+    ) -> Dict[str, Any]:
         return {
-            'level': level,
-            'score': estimated_db,
-            'noise_score': preference_score,
-            'noise_category': noise_category,
-            'description': scoretext or description,
-            'indicators': indicators,
+            'level':            level,
+            'score':            score,
+            'noise_score':      noise_score,
+            'noise_category':   noise_category,
+            'description':      description,
+            'indicators':       indicators,
             'preference_match': preference_match,
-            'data_source': 'HowLoud SoundScore API',
+            'data_source':      data_source,
         }
-
-    # ── Places API (fallback) ─────────────────────────────────────────────────
-
-    async def _search_places(
-        self,
-        client: httpx.AsyncClient,
-        lat: float,
-        lng: float,
-        place_type: Optional[str],
-        radius: int,
-        keyword: Optional[str] = None,
-    ) -> List[Dict]:
-        """Run a single Google Places Nearby Search request."""
-        params: Dict[str, Any] = {
-            'location': f"{lat},{lng}",
-            'radius': radius,
-            'key': self.google_api_key,
-        }
-        if keyword:
-            params['keyword'] = keyword
-        if place_type:
-            params['type'] = place_type
-        try:
-            resp = await client.get(self.places_url, params=params)
-            data = resp.json()
-            if data.get('status') in ('OK', 'ZERO_RESULTS'):
-                return data.get('results', [])
-            print(f"   Places API [{place_type or keyword}]: {data.get('status')}")
-        except Exception as e:
-            print(f"   Places API error [{place_type or keyword}]: {e}")
-        return []
-
-    async def _fetch_all_places(self, lat: float, lng: float) -> Dict[str, List[Dict]]:
-        """Fetch all noise-relevant place types in parallel."""
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            results = await asyncio.gather(
-                self._search_places(client, lat, lng, 'airport', 20000),
-                self._search_places(client, lat, lng, 'train_station', 2000),
-                self._search_places(client, lat, lng, 'transit_station', 1000),
-                self._search_places(client, lat, lng, 'subway_station', 500),
-                self._search_places(client, lat, lng, 'night_club', 1000),
-                self._search_places(client, lat, lng, 'bar', 500),
-                self._search_places(client, lat, lng, 'stadium', 3000),
-                self._search_places(client, lat, lng, None, 2000, keyword='industrial park'),
-                return_exceptions=True,
-            )
-        keys = ['airports', 'train_stations', 'transit_stations', 'subway_stations',
-                'nightclubs', 'bars', 'stadiums', 'industrial']
-        return {
-            key: (val if isinstance(val, list) else [])
-            for key, val in zip(keys, results)
-        }
-
-    # ── Road proximity (OpenStreetMap) ────────────────────────────────────────
-
-    async def _check_road_proximity(self, lat: float, lng: float) -> Dict[str, float]:
-        """
-        Query Overpass API for nearby roads and return per-type max dB impact.
-        Road types: motorway, trunk, primary, secondary.
-        """
-        query = (
-            f"[out:json][timeout:12];"
-            f"("
-            f'way["highway"="motorway"](around:2000,{lat},{lng});'
-            f'way["highway"="trunk"](around:2000,{lat},{lng});'
-            f'way["highway"="primary"](around:1000,{lat},{lng});'
-            f'way["highway"="secondary"](around:500,{lat},{lng});'
-            f');out center;'
-        )
-        road_impacts: Dict[str, float] = {
-            'motorway': 0.0, 'trunk': 0.0, 'primary': 0.0, 'secondary': 0.0
-        }
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(
-                    self.overpass_url,
-                    data={'data': query},
-                    headers={'User-Agent': 'movewise_app_v1'},
-                )
-                data = resp.json()
-            for element in data.get('elements', []):
-                highway_type = element.get('tags', {}).get('highway', '')
-                if highway_type not in road_impacts:
-                    continue
-                center = element.get('center', {})
-                if not center:
-                    continue
-                dist = self._haversine(lat, lng, center['lat'], center['lon'])
-                impact = self._road_db_impact(highway_type, dist)
-                road_impacts[highway_type] = max(road_impacts[highway_type], impact)
-        except Exception as e:
-            print(f"   ⚠️ Overpass API error: {e}")
-        return road_impacts
-
-    # ── Distance / dB helpers ─────────────────────────────────────────────────
-
-    @staticmethod
-    def _haversine(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-        """Return distance in metres between two WGS-84 coordinates."""
-        R = 6_371_000
-        phi1, phi2 = math.radians(lat1), math.radians(lat2)
-        dphi = math.radians(lat2 - lat1)
-        dlam = math.radians(lng2 - lng1)
-        a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-        return 2 * R * math.asin(math.sqrt(a))
-
-    @staticmethod
-    def _road_db_impact(road_type: str, distance_m: float) -> float:
-        """
-        Estimate dB from a road at *distance_m* using line-source attenuation
-        (−3 dB per doubling of distance). Reference distance: 10 m.
-        """
-        source_db = {'motorway': 82, 'trunk': 78, 'primary': 72, 'secondary': 65}
-        base = source_db.get(road_type, 60)
-        ref = max(distance_m, 10)
-        attenuation = 10 * math.log10(ref / 10)
-        return max(0.0, base - attenuation)
-
-    @staticmethod
-    def _airport_db_impact(distance_m: float) -> float:
-        """
-        Estimate ambient L_Aeq contribution from an airport at *distance_m*.
-        Values reflect real-world daytime average dB near commercial airports.
-        """
-        thresholds = [
-            (2_000,  72),  # under/near flight path
-            (5_000,  65),  # within approach corridor
-            (10_000, 57),  # noticeable aircraft overhead
-            (15_000, 49),  # periodic flyovers
-            (20_000, 42),  # distant, occasional aircraft
-        ]
-        for threshold, impact in thresholds:
-            if distance_m < threshold:
-                return float(impact)
-        return 0.0
-
-    @staticmethod
-    def _point_source_db_impact(source_db: float, distance_m: float) -> float:
-        """
-        Estimate dB from a point source using inverse-square-law attenuation
-        (−6 dB per doubling of distance). Reference distance: 10 m.
-        """
-        ref = max(distance_m, 10)
-        attenuation = 20 * math.log10(ref / 10)
-        return max(0.0, source_db - attenuation)
-
-    def _max_impact_from_places(
-        self,
-        places: List[Dict],
-        source_db: float,
-        lat: float,
-        lng: float,
-        is_airport: bool = False,
-    ) -> float:
-        """Return the highest dB impact from a list of Places results."""
-        best = 0.0
-        for place in places:
-            loc = place.get('geometry', {}).get('location', {})
-            if not loc:
-                continue
-            dist = self._haversine(lat, lng, loc['lat'], loc['lng'])
-            impact = (
-                self._airport_db_impact(dist)
-                if is_airport
-                else self._point_source_db_impact(source_db, dist)
-            )
-            best = max(best, impact)
-        return best
-
-    @staticmethod
-    def _combine_db(*db_values: float, baseline: float = 40.0) -> float:
-        """Combine independent noise sources using logarithmic addition."""
-        total_power = 10 ** (baseline / 10)
-        for db in db_values:
-            if db > 0:
-                total_power += 10 ** (db / 10)
-        return min(85.0, 10 * math.log10(total_power))
 
     # ── Noise estimation ──────────────────────────────────────────────────────
 
@@ -328,110 +188,23 @@ class NoiseService:
     ) -> Dict[str, Any]:
         """
         Estimate noise level for *address*.
-        Priority: HowLoud → Google Places + OSM → static city lookup.
+        Priority: HowLoud (address) → HowLoud (state average) → static city lookup.
         """
         lat_lng = await self._geocode_address(address)
-        if lat_lng is None:
-            print(f"   ⚠️ Geocoding failed – using static estimate for '{address}'")
-            return self._static_estimate(address, user_preference)
+        if lat_lng:
+            howloud_data = await self._fetch_howloud_score(*lat_lng)
+            if howloud_data:
+                return self._howloud_to_result(howloud_data, user_preference)
 
-        lat, lng = lat_lng
+        # Fallback 1: hardcoded HowLoud state score
+        state = self._state_from_address(address)
+        if state and state in _STATE_SCORES:
+            print(f"   ℹ️ HowLoud unavailable – using state-level score for {state} ({_STATE_SCORES[state]}/100)")
+            return self._state_score_to_result(_STATE_SCORES[state], user_preference)
 
-        # ── Primary: HowLoud SoundScore ──
-        howloud_data = await self._fetch_howloud_score(lat, lng)
-        if howloud_data:
-            return self._howloud_to_result(howloud_data, user_preference)
-
-        print(f"   ℹ️ HowLoud unavailable – falling back to Places + OSM for '{address}'")
-
-        # ── Fallback: Google Places + OpenStreetMap ──
-        try:
-            places, road_impacts = await asyncio.gather(
-                self._fetch_all_places(lat, lng),
-                self._check_road_proximity(lat, lng),
-            )
-        except Exception as e:
-            print(f"   ⚠️ Noise data fetch error: {e} – using static estimate")
-            return self._static_estimate(address, user_preference)
-
-        db_contributions: List[float] = []
-        detected_indicators: List[str] = []
-
-        # Roads
-        road_labels = {'motorway': 'highway', 'trunk': 'trunk road',
-                       'primary': 'major road', 'secondary': 'secondary road'}
-        for road_type, impact in road_impacts.items():
-            if impact > 1:
-                db_contributions.append(impact)
-                detected_indicators.append(road_labels.get(road_type, road_type))
-                print(f"   🛣️  {road_type}: +{impact:.1f} dB")
-
-        # Airports
-        airport_impact = self._max_impact_from_places(
-            places['airports'], 0, lat, lng, is_airport=True
-        )
-        if airport_impact > 0:
-            db_contributions.append(airport_impact)
-            detected_indicators.append('airport')
-            print(f"   ✈️  Airport proximity: +{airport_impact:.1f} dB  ({len(places['airports'])} found)")
-
-        # Train stations
-        train_impact = self._max_impact_from_places(places['train_stations'], 80, lat, lng)
-        if train_impact > 0:
-            db_contributions.append(train_impact)
-            detected_indicators.append('train station')
-            print(f"   🚂 Train station: +{train_impact:.1f} dB")
-
-        # Transit / subway
-        transit_impact = max(
-            self._max_impact_from_places(places['transit_stations'], 72, lat, lng),
-            self._max_impact_from_places(places['subway_stations'], 70, lat, lng),
-        )
-        if transit_impact > 0:
-            db_contributions.append(transit_impact)
-            detected_indicators.append('transit station')
-
-        # Nightlife (count-based, expressed as ambient L_Aeq estimate)
-        nightclub_count = len(places['nightclubs'])
-        bar_count = len(places['bars'])
-        if nightclub_count > 0 or bar_count >= 3:
-            nightlife_db = min(65, 48 + nightclub_count * 4 + bar_count * 1.5)
-            db_contributions.append(nightlife_db)
-            detected_indicators.append('nightlife district')
-            print(f"   🍺 Nightlife ({nightclub_count} clubs, {bar_count} bars): +{nightlife_db:.1f} dB")
-
-        # Stadiums (periodic events – weighted 30%)
-        stadium_impact = self._max_impact_from_places(places['stadiums'], 90, lat, lng)
-        if stadium_impact > 5:
-            db_contributions.append(stadium_impact * 0.30)
-            detected_indicators.append('sports venue')
-            print(f"   🏟️  Stadium: +{stadium_impact * 0.30:.1f} dB (event-weighted)")
-
-        # Industrial
-        industrial_impact = self._max_impact_from_places(places['industrial'], 75, lat, lng)
-        if industrial_impact > 0:
-            db_contributions.append(industrial_impact)
-            detected_indicators.append('industrial area')
-            print(f"   🏭 Industrial: +{industrial_impact:.1f} dB")
-
-        final_db = self._combine_db(*db_contributions)
-        print(f"   🔊 Final estimated noise: {final_db:.1f} dB")
-
-        noise_category = self.categorize_noise_by_db(final_db)
-        preference_score = self.calculate_preference_score(final_db, noise_category, user_preference)
-        level, description = self._level_description(final_db)
-        preference_match = self._check_preference_match(noise_category, user_preference)
-
-        return {
-            'level': level,
-            'score': round(final_db, 1),
-            'noise_score': preference_score,
-            'noise_category': noise_category,
-            'description': description,
-            'indicators': detected_indicators if detected_indicators else ['residential area'],
-            'preference_match': preference_match,
-            'data_source': 'Google Places API + OpenStreetMap Roads',
-        }
+        # Fallback 2: national average (score 65 → ~55.8 dB, moderate)
+        print(f"   ⚠️ No state match for '{address}' – using national average")
+        return self._state_score_to_result(65, user_preference)
 
     # ── Comparison ────────────────────────────────────────────────────────────
 
@@ -441,51 +214,60 @@ class NoiseService:
         destination_address: str,
         user_preference: str = "moderate",
     ) -> Dict[str, Any]:
-        """Compare noise between two locations, both fetched in parallel."""
+        """
+        Compare noise between two locations, both fetched in parallel.
+        Returns a nested dict with 'current', 'destination', and 'comparison' keys
+        so callers need only this one call to get all noise data.
+        """
         current, destination = await asyncio.gather(
             self.estimate_noise_level(current_address, user_preference),
             self.estimate_noise_level(destination_address, user_preference),
         )
 
-        db_diff = destination['score'] - current['score']
+        db_diff    = destination['score'] - current['score']
         score_diff = destination['noise_score'] - current['noise_score']
-        pref = (user_preference or 'moderate').lower()
+        pref       = (user_preference or 'moderate').lower()
         impact, analysis = self._generate_impact_analysis(db_diff, pref)
 
         return {
-            'current_noise_level': current['level'],
-            'current_score': current['score'],
-            'current_noise_score': current['noise_score'],
-            'current_description': current['description'],
-            'current_indicators': current['indicators'],
-            'current_category': current['noise_category'],
-
-            'destination_noise_level': destination['level'],
-            'destination_score': destination['score'],
-            'destination_noise_score': destination['noise_score'],
-            'destination_description': destination['description'],
-            'destination_indicators': destination['indicators'],
-            'destination_category': destination['noise_category'],
+            'current':     current,
+            'destination': destination,
+            'comparison': {
+                'db_difference':    round(db_diff, 1),
+                'score_difference': round(score_diff, 1),
+                'is_quieter':       db_diff < 0,
+                'impact':           impact,
+                'analysis':         analysis,
+                'preference_match': destination['preference_match'],
+            },
+            # Flat keys retained for backwards compatibility with current analysis.py
+            'current_noise_level':          current['level'],
+            'current_score':                current['score'],
+            'current_noise_score':          current['noise_score'],
+            'current_description':          current['description'],
+            'current_indicators':           current['indicators'],
+            'current_category':             current['noise_category'],
+            'destination_noise_level':      destination['level'],
+            'destination_score':            destination['score'],
+            'destination_noise_score':      destination['noise_score'],
+            'destination_description':      destination['description'],
+            'destination_indicators':       destination['indicators'],
+            'destination_category':         destination['noise_category'],
             'destination_preference_match': destination['preference_match'],
-
-            'score_difference': round(score_diff, 1),
-            'db_difference': round(db_diff, 1),
-            'impact': impact,
-            'analysis': analysis,
-            'data_source': destination['data_source'],
+            'score_difference':             round(score_diff, 1),
+            'db_difference':                round(db_diff, 1),
+            'impact':                       impact,
+            'analysis':                     analysis,
+            'data_source':                  destination['data_source'],
         }
 
     # ── Scoring helpers ───────────────────────────────────────────────────────
 
     def categorize_noise_by_db(self, db_score: float) -> str:
-        if db_score >= 75:
-            return "Very Noisy"
-        elif db_score >= 65:
-            return "Noisy"
-        elif db_score >= 55:
-            return "Moderate"
-        elif db_score >= 45:
-            return "Quiet"
+        if db_score >= 75:   return "Very Noisy"
+        elif db_score >= 65: return "Noisy"
+        elif db_score >= 55: return "Moderate"
+        elif db_score >= 45: return "Quiet"
         return "Very Quiet"
 
     def calculate_preference_score(
@@ -561,48 +343,10 @@ class NoiseService:
         else:  # moderate
             if abs(db_diff) > 10:
                 direction = "louder" if db_diff > 0 else "quieter"
-                change = abs(db_diff)
-                return "Noticeable", f"Significantly {direction} environment (change of {change:.0f} dB)."
+                return "Noticeable", f"Significantly {direction} environment (change of {abs(db_diff):.0f} dB)."
             elif abs(db_diff) > 5:
                 direction = "louder" if db_diff > 0 else "quieter"
-                change = abs(db_diff)
-                return "Slightly Noticeable", f"Somewhat {direction} environment (change of {change:.0f} dB)."
+                return "Slightly Noticeable", f"Somewhat {direction} environment (change of {abs(db_diff):.0f} dB)."
             return "Neutral", "Similar noise environment to your current location."
-
-    # ── Static fallback ───────────────────────────────────────────────────────
-
-    def _static_estimate(self, address: str, user_preference: str) -> Dict[str, Any]:
-        """City-lookup estimation used only when all APIs are unavailable."""
-        address_lower = address.lower()
-        base_score = 55
-
-        for city, score in self._fallback_city_noise.items():
-            if city in address_lower:
-                base_score = score
-                break
-
-        adjustment = sum(
-            change for indicator, change in self._fallback_indicators.items()
-            if indicator in address_lower
-        )
-        final_db = float(max(30, min(85, base_score + adjustment)))
-
-        noise_category = self.categorize_noise_by_db(final_db)
-        preference_score = self.calculate_preference_score(final_db, noise_category, user_preference)
-        level, description = self._level_description(final_db)
-        preference_match = self._check_preference_match(noise_category, user_preference)
-        detected = [k for k in self._fallback_indicators if k in address_lower]
-
-        return {
-            'level': level,
-            'score': round(final_db, 1),
-            'noise_score': preference_score,
-            'noise_category': noise_category,
-            'description': description,
-            'indicators': detected if detected else ['standard residential'],
-            'preference_match': preference_match,
-            'data_source': 'Static city estimates (API unavailable)',
-        }
-
 
 noise_service = NoiseService()
