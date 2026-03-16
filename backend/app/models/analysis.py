@@ -49,13 +49,13 @@ class Analysis(Base):
     # ===================================
     # Detailed Data Storage (Full API Responses as JSON Text)
     # ===================================
-    # SpotCrime API - Real-time crime data with temporal analysis
+    # FBI Crime Data Explorer - Crime data with temporal analysis
     crime_data_json = Column(Text, nullable=True)
-    
-    # OpenStreetMap - Road classifications and noise modeling
+
+    # HowLoud SoundScore / Google Places + OpenStreetMap - Noise modeling
     noise_data_json = Column(Text, nullable=True)
-    
-    # HUD FMR + BLS - Official cost data
+
+    # Static 2024 cost of living estimates
     cost_data_json = Column(Text, nullable=True)
     
     # Google Places - Amenities data
@@ -86,7 +86,7 @@ class Analysis(Base):
     # ===================================
     # Metadata
     # ===================================
-    # Data sources used: "spotcrime,osm,hud,bls,google"
+    # Data sources used: "fbi,howloud,osm,cost2024,google"
     data_sources = Column(String(500), nullable=True)
     
     # Version tracking for analysis algorithm

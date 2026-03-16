@@ -21,9 +21,9 @@ class LLMService:
     ) -> Dict[str, Any]:
         """
         Generate comprehensive lifestyle analysis using real data from:
-        - SpotCrime API (real-time crime data)
-        - OpenStreetMap (noise modeling)
-        - HUD FMR + BLS (cost data)
+        - FBI Crime Data Explorer API (crime data)
+        - HowLoud SoundScore / Google Places + OpenStreetMap (noise modeling)
+        - Static 2024 cost of living data (cost)
         """
         
         # Build context prompt with real data
@@ -48,10 +48,9 @@ class LLMService:
                         "content": """You are a relocation expert helping people make informed decisions about moving. 
 
 You have access to REAL data from authoritative sources:
-- SpotCrime API: actual crimes from past 30 days
-- OpenStreetMap: road classifications and noise modeling
-- HUD Fair Market Rents: official government housing costs
-- BLS Consumer Price Index: regional cost adjustments
+- FBI Crime Data Explorer: state-level crime rates with temporal analysis
+- HowLoud SoundScore API / Google Places + OpenStreetMap: calibrated noise modeling
+- Static 2024 cost of living data: city and state-level estimates
 
 Provide clear, data-driven insights with a friendly, personalized tone. Focus on actionable recommendations based on the user's specific schedule, preferences, and the real data provided."""
                     },
@@ -111,43 +110,44 @@ Provide clear, data-driven insights with a friendly, personalized tone. Focus on
         prompt = f"""Analyze the lifestyle impact of moving from {current_address} to {destination_address}.
 
 ═══════════════════════════════════════════════════════════════
-REAL CRIME DATA (SpotCrime API - Last 30 Days, 5-mile radius)
+REAL CRIME DATA (FBI Crime Data Explorer - State-level, 2025)
 ═══════════════════════════════════════════════════════════════
 
 CURRENT LOCATION:
 • Total Crimes: {current_crime.get('total_crimes', 0)} crimes in 30 days
 • Daily Average: {current_crime.get('daily_average', 0)} crimes/day
 • Safety Score: {current_crime.get('safety_score', 0)}/100
+• Crime Rate: {current_crime.get('crime_rate_per_100k', 0)}/100k population
 
 Crime Types:
 • Violent: {current_crime.get('categories', {}).get('violent', 0)}
 • Property: {current_crime.get('categories', {}).get('property', 0)}
-• Theft: {current_crime.get('categories', {}).get('theft', 0)}
-• Vandalism: {current_crime.get('categories', {}).get('vandalism', 0)}
+• Larceny: {current_crime.get('categories', {}).get('larceny', 0)}
+• Burglary: {current_crime.get('categories', {}).get('burglary', 0)}
 
 Temporal Analysis:
-• During Sleep Hours: {current_crime.get('temporal_analysis', {}).get('crimes_during_sleep_hours', 0)} crimes ({current_crime.get('temporal_analysis', {}).get('sleep_hours_percentage', 0)}%)
-• During Work Hours: {current_crime.get('temporal_analysis', {}).get('crimes_during_work_hours', 0)} crimes ({current_crime.get('temporal_analysis', {}).get('work_hours_percentage', 0)}%)
+• During Sleep Hours (10PM-6AM): {current_crime.get('temporal_analysis', {}).get('crimes_during_sleep_hours', 0)} crimes
+• During Work Hours (9AM-5PM): {current_crime.get('temporal_analysis', {}).get('crimes_during_work_hours', 0)} crimes
 • During Commute: {current_crime.get('temporal_analysis', {}).get('crimes_during_commute', 0)} crimes
 • Peak Crime Hours: {current_crime.get('temporal_analysis', {}).get('peak_hours', [])}
-
-Trend: {current_crime.get('trend', {}).get('direction', 'stable')} ({current_crime.get('trend', {}).get('change_percent', 0):+.1f}%)
 
 DESTINATION LOCATION:
 • Total Crimes: {dest_crime.get('total_crimes', 0)} crimes in 30 days
 • Daily Average: {dest_crime.get('daily_average', 0)} crimes/day
 • Safety Score: {dest_crime.get('safety_score', 0)}/100
+• Crime Rate: {dest_crime.get('crime_rate_per_100k', 0)}/100k population
 
 Crime Types:
 • Violent: {dest_crime.get('categories', {}).get('violent', 0)}
 • Property: {dest_crime.get('categories', {}).get('property', 0)}
-• Theft: {dest_crime.get('categories', {}).get('theft', 0)}
+• Larceny: {dest_crime.get('categories', {}).get('larceny', 0)}
+• Burglary: {dest_crime.get('categories', {}).get('burglary', 0)}
 
 Temporal Analysis:
-• During Sleep Hours: {dest_crime.get('temporal_analysis', {}).get('crimes_during_sleep_hours', 0)} crimes ({dest_crime.get('temporal_analysis', {}).get('sleep_hours_percentage', 0)}%)
+• During Sleep Hours (10PM-6AM): {dest_crime.get('temporal_analysis', {}).get('crimes_during_sleep_hours', 0)} crimes
+• During Work Hours (9AM-5PM): {dest_crime.get('temporal_analysis', {}).get('crimes_during_work_hours', 0)} crimes
+• During Commute: {dest_crime.get('temporal_analysis', {}).get('crimes_during_commute', 0)} crimes
 • Peak Crime Hours: {dest_crime.get('temporal_analysis', {}).get('peak_hours', [])}
-
-Trend: {dest_crime.get('trend', {}).get('direction', 'stable')} ({dest_crime.get('trend', {}).get('change_percent', 0):+.1f}%)
 
 COMPARISON:
 • Crime Difference: {crime_comp.get('crime_difference', 0):+d} crimes/month
@@ -155,32 +155,20 @@ COMPARISON:
 • Assessment: {crime_comp.get('recommendation', 'Review crime patterns')}
 
 ═══════════════════════════════════════════════════════════════
-REAL NOISE DATA (OpenStreetMap Road Model, 2-mile radius)
+REAL NOISE DATA (HowLoud SoundScore / Google Places + OpenStreetMap)
 ═══════════════════════════════════════════════════════════════
 
 CURRENT LOCATION:
 • Estimated Noise: {current_noise.get('estimated_db', 0):.1f} dB
 • Category: {current_noise.get('noise_category', 'Unknown')}
 • Noise Score: {current_noise.get('noise_score', 0)}/100
-
-Road Breakdown:
-• Highways: {current_noise.get('road_breakdown', {}).get('highway', 0)} roads
-• Arterials: {current_noise.get('road_breakdown', {}).get('arterial', 0)} roads
-• Residential: {current_noise.get('road_breakdown', {}).get('residential', 0)} roads
-• Total Roads: {current_noise.get('total_roads', 0)}
-• Road Density: {current_noise.get('road_density', 0)} roads/sq mi
-• Dominant Source: {current_noise.get('dominant_noise_source', 'residential')}
+• Description: {current_noise.get('description', '')}
 
 DESTINATION LOCATION:
 • Estimated Noise: {dest_noise.get('estimated_db', 0):.1f} dB
 • Category: {dest_noise.get('noise_category', 'Unknown')}
 • Noise Score: {dest_noise.get('noise_score', 0)}/100
-
-Road Breakdown:
-• Highways: {dest_noise.get('road_breakdown', {}).get('highway', 0)} roads
-• Arterials: {dest_noise.get('road_breakdown', {}).get('arterial', 0)} roads
-• Residential: {dest_noise.get('road_breakdown', {}).get('residential', 0)} roads
-• Dominant Source: {dest_noise.get('dominant_noise_source', 'residential')}
+• Description: {dest_noise.get('description', '')}
 
 COMPARISON:
 • dB Difference: {noise_comp.get('db_difference', 0):+.1f} dB
@@ -190,40 +178,41 @@ COMPARISON:
 • Recommendation: {noise_comp.get('recommendation', 'Review noise levels')}
 
 ═══════════════════════════════════════════════════════════════
-REAL COST DATA (HUD Fair Market Rents + BLS Consumer Price Index)
+REAL COST DATA (Static 2024 Cost of Living Estimates)
 ═══════════════════════════════════════════════════════════════
 
 CURRENT LOCATION:
 • Total Monthly: ${current_cost.get('total_monthly', 0):,.2f}
 • Total Annual: ${current_cost.get('total_annual', 0):,.2f}
 • Affordability Score: {current_cost.get('affordability_score', 0)}/100
+• Cost Index: {current_cost.get('cost_index', 1.0)}
 
 Breakdown:
-• Housing (HUD FMR): ${current_cost.get('housing', {}).get('monthly_rent', 0):,.2f}/month
+• Housing: ${current_cost.get('housing', {}).get('monthly_rent', 0):,.2f}/month
 • Utilities: ${current_cost.get('expenses', {}).get('utilities', 0):,.2f}
 • Groceries: ${current_cost.get('expenses', {}).get('groceries', 0):,.2f}
 • Transportation: ${current_cost.get('expenses', {}).get('transportation', 0):,.2f}
 • Healthcare: ${current_cost.get('expenses', {}).get('healthcare', 0):,.2f}
 • Entertainment: ${current_cost.get('expenses', {}).get('entertainment', 0):,.2f}
-• CPI Index: {current_cost.get('cpi_index', 100)}
 
 DESTINATION LOCATION:
 • Total Monthly: ${dest_cost.get('total_monthly', 0):,.2f}
 • Total Annual: ${dest_cost.get('total_annual', 0):,.2f}
 • Affordability Score: {dest_cost.get('affordability_score', 0)}/100
+• Cost Index: {dest_cost.get('cost_index', 1.0)}
 
 Breakdown:
-• Housing (HUD FMR): ${dest_cost.get('housing', {}).get('monthly_rent', 0):,.2f}/month
+• Housing: ${dest_cost.get('housing', {}).get('monthly_rent', 0):,.2f}/month
 • Utilities: ${dest_cost.get('expenses', {}).get('utilities', 0):,.2f}
 • Groceries: ${dest_cost.get('expenses', {}).get('groceries', 0):,.2f}
 • Transportation: ${dest_cost.get('expenses', {}).get('transportation', 0):,.2f}
-• CPI Index: {dest_cost.get('cpi_index', 100)}
+• Healthcare: ${dest_cost.get('expenses', {}).get('healthcare', 0):,.2f}
+• Entertainment: ${dest_cost.get('expenses', {}).get('entertainment', 0):,.2f}
 
 COMPARISON:
 • Monthly Difference: ${cost_comp.get('monthly_difference', 0):+,.2f}
 • Annual Difference: ${cost_comp.get('annual_difference', 0):+,.2f}
 • Percent Change: {cost_comp.get('percent_change', 0):+.1f}%
-• Housing Change: ${cost_comp.get('housing_difference', 0):+,.2f}/month
 • Assessment: {cost_comp.get('recommendation', 'Review costs')}
 
 ═══════════════════════════════════════════════════════════════
@@ -232,7 +221,6 @@ AMENITIES & LIFESTYLE
 
 Destination Amenities:
 • Total Count: {dest_amenities.get('total_count', 0)}
-• Average Distance: {dest_amenities.get('average_distance', 0):.1f} miles
 
 By Type:
 """
@@ -247,7 +235,7 @@ COMMUTE INFORMATION
 ═══════════════════════════════════════════════════════════════
 
 • Duration: {commute_data.get('duration_minutes', 0)} minutes
-• Distance: {commute_data.get('distance_miles', 0):.1f} miles
+• Distance: {commute_data.get('distance', 'Unknown')}
 • Method: {commute_data.get('method', 'driving').title()}
 """
 

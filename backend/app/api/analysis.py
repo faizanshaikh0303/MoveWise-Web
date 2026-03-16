@@ -43,9 +43,9 @@ async def create_analysis(
 ):
     """
     Generate comprehensive location analysis with REAL data from:
-    - SpotCrime API (real-time crime)
-    - OpenStreetMap (noise modeling)
-    - HUD FMR + BLS (cost data)
+    - FBI Crime Data Explorer API (crime data)
+    - HowLoud SoundScore / Google Places + OpenStreetMap (noise modeling)
+    - Static 2024 cost of living data (cost)
     - Google Places (amenities)
     - Google Maps (commute)
     """

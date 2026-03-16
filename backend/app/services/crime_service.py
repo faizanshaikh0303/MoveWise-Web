@@ -117,7 +117,7 @@ class CrimeService:
     async def _fetch_fbi_rates(self, address: str) -> Optional[Dict[str, Any]]:
         """
         Fetch crime rates per 100k from the FBI CDE API for all categories.
-        Returns a dict with violent, property, larceny, destruction_of_property, total, source.
+        Returns a dict with violent, property, larceny, burglary, total, source.
         """
         state = self._state_from_address(address)
         if not state:
