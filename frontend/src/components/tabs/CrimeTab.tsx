@@ -31,27 +31,26 @@ const CrimeTab = ({ data }) => {
   const destination = data?.destination || {};
   const comparison = data?.comparison || {};
 
-  // FIXED: Always show both bars with proper fallbacks
   const categoryData = [
-    { 
-      name: 'Violent', 
-      current: current.categories?.violent || 0, 
-      destination: destination.categories?.violent || 0  // Always include destination
+    {
+      name: 'Violent',
+      current: current.categories?.violent || 0,
+      destination: destination.categories?.violent || 0
     },
-    { 
-      name: 'Property', 
-      current: current.categories?.property || 0, 
-      destination: destination.categories?.property || 0 
+    {
+      name: 'Property',
+      current: current.categories?.property || 0,
+      destination: destination.categories?.property || 0
     },
-    { 
-      name: 'Theft', 
-      current: current.categories?.theft || 0, 
-      destination: destination.categories?.theft || 0 
+    {
+      name: 'Larceny',
+      current: current.categories?.larceny || 0,
+      destination: destination.categories?.larceny || 0
     },
-    { 
-      name: 'Vandalism', 
-      current: current.categories?.vandalism || 0, 
-      destination: destination.categories?.vandalism || 0 
+    {
+      name: 'Dest. of Property',
+      current: current.categories?.destruction_of_property || 0,
+      destination: destination.categories?.destruction_of_property || 0
     }
   ];
 

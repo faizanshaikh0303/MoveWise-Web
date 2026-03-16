@@ -9,13 +9,13 @@ from typing import Any, Dict, Optional, Tuple
 _HOUR_WEIGHTS = [3,3,2,2,2,2,3,4,3,3,3,3,3,3,3,4,4,5,6,7,8,7,5,4]
 _TOTAL_WEIGHT = sum(_HOUR_WEIGHTS)  # 92
 
-# Crime category ratios (FBI UCR averages)
+# Fallback category ratios when FBI category endpoints are unavailable (FBI UCR averages)
 _CATEGORY_RATIOS = {
-    'violent':   0.13,
-    'property':  0.22,
-    'theft':     0.50,
-    'vandalism': 0.11,
-    'other':     0.04,
+    'violent':                 0.13,
+    'property':                0.22,
+    'larceny':                 0.50,
+    'destruction_of_property': 0.11,
+    'other':                   0.04,
 }
 
 # Local population assumed for a walkable 1–2 mile radius around the address
@@ -114,15 +114,14 @@ class CrimeService:
 
         return None
 
-    async def _fetch_fbi_rate(self, address: str) -> Optional[Tuple[float, str]]:
+    async def _fetch_fbi_rates(self, address: str) -> Optional[Dict[str, Any]]:
         """
-        Fetch crime rate per 100k from the FBI CDE API.
-        Returns (rate, source_label) or None if unavailable.
-        Tries violent + property endpoints; estimates the other if only one succeeds.
+        Fetch crime rates per 100k from the FBI CDE API for all categories.
+        Returns a dict with violent, property, larceny, destruction_of_property, total, source.
         """
         state = self._state_from_address(address)
         if not state:
-            print(f"   ⚠️ FBI API: could not extract state from '{address}'")
+            print(f"   WARNING FBI API: could not extract state from '{address}'")
             return None
 
         current_year = datetime.now().year
@@ -133,36 +132,52 @@ class CrimeService:
 
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
-                    v_resp, p_resp = await asyncio.gather(
+                    v_resp, p_resp, l_resp, d_resp = await asyncio.gather(
                         client.get(f"{self.fbi_api_base}/summarized/state/{state}/V", params=params),
                         client.get(f"{self.fbi_api_base}/summarized/state/{state}/P", params=params),
+                        client.get(f"{self.fbi_api_base}/summarized/state/{state}/larceny", params=params),
+                        client.get(f"{self.fbi_api_base}/summarized/state/{state}/destruction-of-property", params=params),
                     )
 
-                print(f"   FBI API {state} {year}: V={v_resp.status_code} P={p_resp.status_code}")
+                print(f"   FBI API {state} {year}: V={v_resp.status_code} P={p_resp.status_code} L={l_resp.status_code} D={d_resp.status_code}")
 
                 v_data = v_resp.json() if v_resp.status_code == 200 else None
                 p_data = p_resp.json() if p_resp.status_code == 200 else None
+                l_data = l_resp.json() if l_resp.status_code == 200 else None
+                d_data = d_resp.json() if d_resp.status_code == 200 else None
 
                 print(f"   FBI raw violent[:120]: {str(v_data)[:120]}")
                 print(f"   FBI raw property[:120]: {str(p_data)[:120]}")
 
                 violent_rate  = self._extract_rate(v_data)
                 property_rate = self._extract_rate(p_data)
+                larceny_rate  = self._extract_rate(l_data)
+                destruction_rate = self._extract_rate(d_data)
 
                 if violent_rate is None and property_rate is None:
-                    print(f"   ⚠️ FBI API: unrecognised response format for {state} {year}")
+                    print(f"   WARNING FBI API: unrecognised response format for {state} {year}")
                     continue
 
                 v = violent_rate or 0.0
-                p = property_rate or round(v * 3.5, 1)   # property ~3.5× violent nationally
+                p = property_rate or round(v * 3.5, 1)
                 total = round(v + p, 1)
 
                 if total > 0:
-                    print(f"   ✓ FBI API {state} {year}: {v:.0f} violent + {p:.0f} property = {total:.0f}/100k")
-                    return total, f'FBI Crime Data Explorer ({year})'
+                    cats = []
+                    if larceny_rate:    cats.append(f"larceny={larceny_rate:.0f}")
+                    if destruction_rate: cats.append(f"destruction={destruction_rate:.0f}")
+                    print(f"   OK FBI API {state} {year}: {v:.0f} violent + {p:.0f} property = {total:.0f}/100k ({', '.join(cats) or 'no category data'})")
+                    return {
+                        'total':                   total,
+                        'violent':                 v,
+                        'property':                p,
+                        'larceny':                 larceny_rate,
+                        'destruction_of_property': destruction_rate,
+                        'source':                  f'FBI Crime Data Explorer ({year})',
+                    }
 
             except Exception as e:
-                print(f"   ⚠️ FBI API error ({state} {year}): {e}")
+                print(f"   WARNING FBI API error ({state} {year}): {e}")
                 continue
 
         return None
@@ -180,12 +195,20 @@ class CrimeService:
 
     # ── Core metrics ───────────────────────────────────────────────────────────
 
-    async def _get_rate(self, address: str) -> Tuple[float, str]:
-        """Return (crime_rate_per_100k, data_source). Tries FBI API first."""
-        result = await self._fetch_fbi_rate(address)
+    async def _get_rates(self, address: str) -> Dict[str, Any]:
+        """Return a dict with total rate, source, and per-category rates. Tries FBI API first."""
+        result = await self._fetch_fbi_rates(address)
         if result:
             return result
-        return self._static_rate(address), 'FBI UCR 2022 (City Averages)'
+        rate = self._static_rate(address)
+        return {
+            'total':                   rate,
+            'violent':                 None,
+            'property':                None,
+            'larceny':                 None,
+            'destruction_of_property': None,
+            'source':                  'FBI UCR 2022 (City Averages)',
+        }
 
     def _rate_to_safety_score(self, rate: float) -> float:
         """Convert crime rate per 100k to safety score 0-100 (higher = safer)."""
@@ -198,16 +221,29 @@ class CrimeService:
         if rate < 7500:  return 30.0
         return 20.0
 
-    def _build_location_data(self, rate: float, source: str) -> Dict[str, Any]:
+    def _build_location_data(self, fbi: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Build the complete location crime dict from a crime rate.
-        All values are deterministic — no randomness.
+        Build the complete location crime dict from FBI rate data.
+        Uses real FBI category rates when available; falls back to national ratios.
         """
-        # 30-day crime count for a typical 5-mile radius (~150k residents)
+        rate   = fbi['total']
+        source = fbi['source']
+
+        # 30-day crime count for a typical local population radius
         total_crimes = round(rate / 100_000 * _LOCAL_POP / 12)
 
-        # Crime categories (fixed FBI UCR ratios)
-        categories = {k: round(total_crimes * v) for k, v in _CATEGORY_RATIOS.items()}
+        def _cat_crimes(cat_rate: Optional[float], fallback_ratio: float) -> int:
+            if cat_rate is not None:
+                return round(cat_rate / 100_000 * _LOCAL_POP / 12)
+            return round(total_crimes * fallback_ratio)
+
+        categories = {
+            'violent':                 _cat_crimes(fbi.get('violent'),                 _CATEGORY_RATIOS['violent']),
+            'property':                _cat_crimes(fbi.get('property'),                _CATEGORY_RATIOS['property']),
+            'larceny':                 _cat_crimes(fbi.get('larceny'),                 _CATEGORY_RATIOS['larceny']),
+            'destruction_of_property': _cat_crimes(fbi.get('destruction_of_property'), _CATEGORY_RATIOS['destruction_of_property']),
+            'other':                   round(total_crimes * _CATEGORY_RATIOS['other']),
+        }
 
         # Hourly distribution (deterministic, scaled to total_crimes)
         hourly = [round(total_crimes * w / _TOTAL_WEIGHT) for w in _HOUR_WEIGHTS]
@@ -266,13 +302,13 @@ class CrimeService:
         Compare crime between two locations.
         Fetches both locations from FBI API in parallel; falls back to static data.
         """
-        (current_rate, current_src), (dest_rate, dest_src) = await asyncio.gather(
-            self._get_rate(current_address),
-            self._get_rate(dest_address),
+        current_fbi, dest_fbi = await asyncio.gather(
+            self._get_rates(current_address),
+            self._get_rates(dest_address),
         )
 
-        current_data = self._build_location_data(current_rate, current_src)
-        dest_data    = self._build_location_data(dest_rate, dest_src)
+        current_data = self._build_location_data(current_fbi)
+        dest_data    = self._build_location_data(dest_fbi)
 
         crime_diff = dest_data['total_crimes'] - current_data['total_crimes']
         pct_change = round(
@@ -291,7 +327,7 @@ class CrimeService:
                 'recommendation':      self._recommendation(
                     current_data['safety_score'],
                     dest_data['safety_score'],
-                    dest_rate,
+                    dest_fbi['total'],
                 ),
             },
         }
