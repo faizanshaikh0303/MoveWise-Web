@@ -136,7 +136,7 @@ class CrimeService:
                         client.get(f"{self.fbi_api_base}/summarized/state/{state}/V", params=params),
                         client.get(f"{self.fbi_api_base}/summarized/state/{state}/P", params=params),
                         client.get(f"{self.fbi_api_base}/summarized/state/{state}/larceny", params=params),
-                        client.get(f"{self.fbi_api_base}/summarized/state/{state}/destruction-of-property", params=params),
+                        client.get(f"{self.fbi_api_base}/summarized/state/{state}/vandalism", params=params),
                     )
 
                 print(f"   FBI API {state} {year}: V={v_resp.status_code} P={p_resp.status_code} L={l_resp.status_code} D={d_resp.status_code}")
