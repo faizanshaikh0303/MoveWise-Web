@@ -11,11 +11,11 @@ _TOTAL_WEIGHT = sum(_HOUR_WEIGHTS)  # 92
 
 # Fallback category ratios when FBI category endpoints are unavailable (FBI UCR averages)
 _CATEGORY_RATIOS = {
-    'violent':                 0.13,
-    'property':                0.22,
-    'larceny':                 0.50,
-    'destruction_of_property': 0.11,
-    'other':                   0.04,
+    'violent':   0.13,
+    'property':  0.22,
+    'larceny':   0.50,
+    'burglary':  0.11,
+    'other':     0.04,
 }
 
 # Local population assumed for a walkable 1–2 mile radius around the address
@@ -136,7 +136,7 @@ class CrimeService:
                         client.get(f"{self.fbi_api_base}/summarized/state/{state}/V", params=params),
                         client.get(f"{self.fbi_api_base}/summarized/state/{state}/P", params=params),
                         client.get(f"{self.fbi_api_base}/summarized/state/{state}/larceny", params=params),
-                        client.get(f"{self.fbi_api_base}/summarized/state/{state}/vandalism", params=params),
+                        client.get(f"{self.fbi_api_base}/summarized/state/{state}/burglary", params=params),
                     )
 
                 print(f"   FBI API {state} {year}: V={v_resp.status_code} P={p_resp.status_code} L={l_resp.status_code} D={d_resp.status_code}")
@@ -152,7 +152,7 @@ class CrimeService:
                 violent_rate  = self._extract_rate(v_data)
                 property_rate = self._extract_rate(p_data)
                 larceny_rate  = self._extract_rate(l_data)
-                destruction_rate = self._extract_rate(d_data)
+                burglary_rate = self._extract_rate(d_data)
 
                 if violent_rate is None and property_rate is None:
                     print(f"   WARNING FBI API: unrecognised response format for {state} {year}")
@@ -164,16 +164,16 @@ class CrimeService:
 
                 if total > 0:
                     cats = []
-                    if larceny_rate:    cats.append(f"larceny={larceny_rate:.0f}")
-                    if destruction_rate: cats.append(f"destruction={destruction_rate:.0f}")
+                    if larceny_rate:  cats.append(f"larceny={larceny_rate:.0f}")
+                    if burglary_rate: cats.append(f"burglary={burglary_rate:.0f}")
                     print(f"   OK FBI API {state} {year}: {v:.0f} violent + {p:.0f} property = {total:.0f}/100k ({', '.join(cats) or 'no category data'})")
                     return {
-                        'total':                   total,
-                        'violent':                 v,
-                        'property':                p,
-                        'larceny':                 larceny_rate,
-                        'destruction_of_property': destruction_rate,
-                        'source':                  f'FBI Crime Data Explorer ({year})',
+                        'total':    total,
+                        'violent':  v,
+                        'property': p,
+                        'larceny':  larceny_rate,
+                        'burglary': burglary_rate,
+                        'source':   f'FBI Crime Data Explorer ({year})',
                     }
 
             except Exception as e:
@@ -202,12 +202,12 @@ class CrimeService:
             return result
         rate = self._static_rate(address)
         return {
-            'total':                   rate,
-            'violent':                 None,
-            'property':                None,
-            'larceny':                 None,
-            'destruction_of_property': None,
-            'source':                  'FBI UCR 2022 (City Averages)',
+            'total':    rate,
+            'violent':  None,
+            'property': None,
+            'larceny':  None,
+            'burglary': None,
+            'source':   'FBI UCR 2022 (City Averages)',
         }
 
     def _rate_to_safety_score(self, rate: float) -> float:
@@ -238,11 +238,11 @@ class CrimeService:
             return round(total_crimes * fallback_ratio)
 
         categories = {
-            'violent':                 _cat_crimes(fbi.get('violent'),                 _CATEGORY_RATIOS['violent']),
-            'property':                _cat_crimes(fbi.get('property'),                _CATEGORY_RATIOS['property']),
-            'larceny':                 _cat_crimes(fbi.get('larceny'),                 _CATEGORY_RATIOS['larceny']),
-            'destruction_of_property': _cat_crimes(fbi.get('destruction_of_property'), _CATEGORY_RATIOS['destruction_of_property']),
-            'other':                   round(total_crimes * _CATEGORY_RATIOS['other']),
+            'violent':  _cat_crimes(fbi.get('violent'),  _CATEGORY_RATIOS['violent']),
+            'property': _cat_crimes(fbi.get('property'), _CATEGORY_RATIOS['property']),
+            'larceny':  _cat_crimes(fbi.get('larceny'),  _CATEGORY_RATIOS['larceny']),
+            'burglary': _cat_crimes(fbi.get('burglary'), _CATEGORY_RATIOS['burglary']),
+            'other':    round(total_crimes * _CATEGORY_RATIOS['other']),
         }
 
         # Hourly distribution (deterministic, scaled to total_crimes)

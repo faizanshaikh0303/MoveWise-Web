@@ -48,9 +48,9 @@ const CrimeTab = ({ data }) => {
       destination: destination.categories?.larceny || 0
     },
     {
-      name: 'Dest. of Property',
-      current: current.categories?.destruction_of_property || 0,
-      destination: destination.categories?.destruction_of_property || 0
+      name: 'Burglary',
+      current: current.categories?.burglary || 0,
+      destination: destination.categories?.burglary || 0
     }
   ];
 
