@@ -91,8 +91,7 @@ const AmenitiesTab = ({ data }: any) => {
 
   const mapContainerStyle = {
     width: '100%',
-    height: '600px',
-    borderRadius: '12px'
+    height: '560px',
   };
 
   const center = {
@@ -186,67 +185,57 @@ const AmenitiesTab = ({ data }: any) => {
         </motion.div>
       </div>
 
-      {/* Category Filter */}
+      {/* Category Filter + Map */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="bg-white rounded-xl p-4 shadow-sm border border-gray-200"
+        className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
       >
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setSelectedCategory('all')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              selectedCategory === 'all'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            All ({totalDestination})
-          </button>
-          {Object.entries(destinationAmenities).map(([category, count]: [string, number]) => {
-            const categoryInfo = categoryIcons[category];
-            const Icon = categoryInfo?.icon || MapPin;
-            
-            return (
+        <div className="flex h-[560px]">
+          {/* Sidebar */}
+          <div className="w-48 flex-shrink-0 border-r border-gray-200 flex flex-col">
+            <div className="p-3 border-b border-gray-100">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Filter</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
               <button
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center space-x-2 ${
-                  selectedCategory === category
-                    ? 'text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                onClick={() => setSelectedCategory('all')}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  selectedCategory === 'all'
+                    ? 'bg-blue-500 text-white'
+                    : 'text-gray-700 hover:bg-gray-100'
                 }`}
-                style={{
-                  backgroundColor: selectedCategory === category ? categoryInfo?.color : undefined
-                }}
               >
-                <Icon className="h-4 w-4" />
-                <span>{category} ({count})</span>
+                All ({totalDestination})
               </button>
-            );
-          })}
-        </div>
-      </motion.div>
+              {Object.entries(destinationAmenities).map(([category, count]: [string, number]) => {
+                const categoryInfo = categoryIcons[category];
+                const Icon = categoryInfo?.icon || MapPin;
+                return (
+                  <button
+                    key={category}
+                    onClick={() => setSelectedCategory(category)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                      selectedCategory === category ? 'text-white' : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                    style={{
+                      backgroundColor: selectedCategory === category ? categoryInfo?.color : undefined
+                    }}
+                  >
+                    <Icon className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate">{category}</span>
+                    <span className="ml-auto flex-shrink-0 text-xs opacity-75">({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-      {/* Map */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-        className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
-      >
-        <h3 className="text-lg font-bold text-gray-900 mb-4">
-          Amenities Map
-          {selectedCategory !== 'all' && (
-            <span className="text-sm font-normal text-gray-600 ml-2">
-              - {selectedCategory}
-            </span>
-          )}
-        </h3>
-        
-        {isLoaded ? (
-          <GoogleMap
+          {/* Map */}
+          <div className="flex-1 min-w-0">
+            {isLoaded ? (
+              <GoogleMap
             mapContainerStyle={mapContainerStyle}
             center={center}
             zoom={14}
@@ -312,13 +301,15 @@ const AmenitiesTab = ({ data }: any) => {
             )}
           </GoogleMap>
         ) : (
-          <div className="flex items-center justify-center h-96 bg-gray-50 rounded-xl">
+          <div className="flex items-center justify-center h-full bg-gray-50">
             <div className="text-center text-gray-500">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-3"></div>
               <p className="text-sm">Loading map...</p>
             </div>
           </div>
         )}
+          </div>
+        </div>
       </motion.div>
 
       {/* Comparison Grid */}

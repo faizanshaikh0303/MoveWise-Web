@@ -67,9 +67,10 @@ class PlacesService:
         # Always include essentials (all type-based)
         essential_tasks = [
             ('grocery stores', {'type': 'grocery_or_supermarket'}),
-            ('hospitals',      {'type': 'hospital'}),
-            ('pharmacies',     {'type': 'pharmacy'}),
+            ('hospitals',      {'keyword': 'hospital'}),
+            ('pharmacies',     {'keyword': 'pharmacy'}),
             ('train stations', {'type': 'train_station'}),
+            ('_subway_stations', {'type': 'subway_station'}),
             ('bus stations',   {'type': 'bus_station'}),
             ('airports',       {'type': 'airport'}),
         ]
@@ -147,6 +148,11 @@ class PlacesService:
                 print(f"   ❌ Error fetching {display_name}: {e}")
                 counts[display_name] = 0
                 locations[display_name] = []
+
+        # Merge subway results into train stations
+        if '_subway_stations' in counts:
+            counts['train stations'] = counts.get('train stations', 0) + counts.pop('_subway_stations')
+            locations['train stations'] = locations.get('train stations', []) + locations.pop('_subway_stations', [])
 
         # Drop categories with no results — they add no value to the UI
         counts    = {k: v for k, v in counts.items()    if v > 0}
