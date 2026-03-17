@@ -154,6 +154,42 @@ class PlacesService:
 
         return counts, locations
     
+    @staticmethod
+    def _calculate_lifestyle_score(destination_counts: Dict[str, int]) -> float:
+        total = sum(destination_counts.values())
+        if total >= 50:
+            base = 100.0
+        elif total >= 30:
+            base = 90.0
+        elif total >= 20:
+            base = 75.0
+        elif total >= 10:
+            base = 60.0
+        elif total >= 5:
+            base = 40.0
+        else:
+            base = 20.0
+        variety_bonus = min(len(destination_counts) * 3, 15)
+        return min(base + variety_bonus, 100.0)
+
+    @staticmethod
+    def _calculate_convenience_score(commute_data: Dict[str, Any]) -> float:
+        if commute_data.get('method') == 'none' or commute_data.get('duration_minutes') == 0:
+            return 100.0
+        duration = commute_data.get('duration_minutes')
+        if duration is None:
+            return 70.0
+        if duration <= 20:
+            return 100.0
+        elif duration <= 30:
+            return round(90 - (duration - 20), 1)
+        elif duration <= 45:
+            return round(80 - (duration - 30) * 1.5, 1)
+        elif duration <= 60:
+            return round(60 - (duration - 45) * 2, 1)
+        else:
+            return round(max(20, 30 - (duration - 60) * 0.5), 1)
+
     def compare_amenities(
         self,
         current_lat: float,
@@ -164,7 +200,7 @@ class PlacesService:
     ) -> Dict[str, Any]:
         """Compare amenities between two locations based on user hobbies"""
         
-        # Check if locations are the same (within ~100 meters)
+        # Check if locations are the same (within ~200 meters)
         from math import radians, cos, sin, asin, sqrt
         
         def haversine_distance(lat1, lon1, lat2, lon2):
@@ -179,19 +215,20 @@ class PlacesService:
         
         distance = haversine_distance(current_lat, current_lng, destination_lat, destination_lng)
         
-        # If same location (within 100m), skip amenities search
-        if distance < 100:
+        # If same location (within 200m), skip amenities search
+        if distance < 200:
             print(f"ℹ️  Same location detected (distance: {distance:.0f}m), skipping amenities")
             return {
                 'current_amenities': {},
                 'destination_amenities': {},
-                'destination_locations': {},  # Empty for same location
+                'destination_locations': {},
                 'destination_lat': destination_lat,
                 'destination_lng': destination_lng,
                 'current_lat': current_lat,
                 'current_lng': current_lng,
                 'destination': {'total_count': 0, 'by_type': {}},
                 'current': {'total_count': 0, 'by_type': {}},
+                'lifestyle_score': 10.0,
                 'comparison_text': 'Same location - no comparison needed.',
                 'same_location': True,
                 'search_radius': '1 mile'
@@ -218,30 +255,38 @@ class PlacesService:
         print(f"   Locations stored: {sum(len(v) for v in destination_locations.values())} places")
         
         # Generate comparison text
-        if destination_total > current_total:
-            percentage_diff = ((destination_total - current_total) / current_total * 100) if current_total > 0 else 100
+        if current_total == 0 and destination_total == 0:
+            comparison_text = "No amenities found within 1 mile of either location."
+        elif current_total == 0:
+            improvements = list(destination_counts.keys())
+            comparison_text = f"The new area has {destination_total} amenities nearby"
+            if improvements:
+                comparison_text += f", including {', '.join(improvements[:3])}."
+            else:
+                comparison_text += "."
+        elif destination_total == 0:
+            comparison_text = "No amenities found within 1 mile of the new location."
+        elif destination_total > current_total:
+            percentage_diff = (destination_total - current_total) / current_total * 100
             comparison_text = f"The new area offers {percentage_diff:.0f}% more amenities"
-            
-            # Find specific improvements
-            improvements = []
-            for amenity, count in destination_counts.items():
-                if count > current_counts.get(amenity, 0):
-                    improvements.append(amenity)
-            
+            improvements = [a for a, c in destination_counts.items() if c > current_counts.get(a, 0)]
             if improvements:
                 comparison_text += f", particularly {', '.join(improvements[:3])}."
             else:
                 comparison_text += "."
         elif destination_total < current_total:
-            percentage_diff = ((current_total - destination_total) / current_total * 100)
+            percentage_diff = (current_total - destination_total) / current_total * 100
             comparison_text = f"The new area has {percentage_diff:.0f}% fewer amenities."
         else:
             comparison_text = "Both areas offer similar amenity access."
         
+        lifestyle_score = self._calculate_lifestyle_score(destination_counts)
+        print(f"   Lifestyle score: {lifestyle_score}/100")
+
         return {
             'current_amenities': current_counts,
             'destination_amenities': destination_counts,
-            'destination_locations': destination_locations,  # NEW: Full location data for map
+            'destination_locations': destination_locations,
             'destination_lat': destination_lat,
             'destination_lng': destination_lng,
             'current_lat': current_lat,
@@ -254,6 +299,7 @@ class PlacesService:
                 'total_count': current_total,
                 'by_type': current_counts
             },
+            'lifestyle_score': lifestyle_score,
             'comparison_text': comparison_text,
             'same_location': False,
             'search_radius': '1 mile'

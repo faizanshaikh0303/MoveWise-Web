@@ -135,7 +135,8 @@ async def create_analysis(
                     'distance': '0 km',
                     'method': 'none',
                     'description': 'You work from home — no commute needed!',
-                    'alternatives': {}
+                    'alternatives': {},
+                    'convenience_score': 100.0,
                 }
             if not work_address:
                 print("✓ Commute: No work address (skipped)")
@@ -144,7 +145,8 @@ async def create_analysis(
                     'distance': 'Unknown',
                     'method': 'driving',
                     'description': 'No work address provided.',
-                    'alternatives': {}
+                    'alternatives': {},
+                    'convenience_score': 70.0,
                 }
             try:
                 print(f"   Preferred method: {preferred_mode}")
@@ -179,9 +181,11 @@ async def create_analysis(
                     'distance': primary_result.get('distance'),
                     'method': preferred_mode,
                     'description': primary_result.get('description'),
-                    'alternatives': all_modes
+                    'alternatives': all_modes,
                 }
-                print(f"✓ Primary commute: {data['duration_minutes']} min by {preferred_mode}")
+                data['convenience_score'] = places_service._calculate_convenience_score(data)
+                print(f"✓ Primary commute: {data['duration_minutes']} min by {preferred_mode}"
+                      f" | Convenience: {data['convenience_score']}/100")
                 return data
             except Exception as e:
                 print(f"⚠️  Commute calculation error: {e}")
@@ -190,7 +194,8 @@ async def create_analysis(
                     'distance': 'Unknown',
                     'method': preferred_mode,
                     'description': 'Unable to calculate commute time.',
-                    'alternatives': {}
+                    'alternatives': {},
+                    'convenience_score': 70.0,
                 }
 
         print("🚀 Fetching crime, noise, cost, amenities, commute in parallel...")
@@ -343,9 +348,6 @@ async def create_analysis(
             
             # NEW: Action steps
             action_steps_json=safe_json_dumps(llm_analysis.get('action_steps', [])),
-            
-            # NEW: Comparison insights
-            comparison_insights_json=safe_json_dumps(scores.get('comparison_insights', {})),
             
             # Metadata
             data_sources='fbi,osm,census,google',  # All FREE APIs!

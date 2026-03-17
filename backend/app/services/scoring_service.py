@@ -9,11 +9,11 @@ class ScoringService:
     
     # Score weights (must sum to 1.0)
     WEIGHTS = {
-        'safety': 0.30,        # Crime data (30%)
+        'safety': 0.25,        # Crime data (25%)
         'affordability': 0.25, # Cost of living (25%)
         'environment': 0.20,   # Noise levels (20%)
         'lifestyle': 0.15,     # Amenities (15%)
-        'convenience': 0.10    # Commute (10%)
+        'convenience': 0.15    # Commute (15%)
     }
     
     def calculate_overall_score(
@@ -30,12 +30,12 @@ class ScoringService:
         Returns detailed breakdown of all component scores
         """
         
-        # Extract individual scores
+        # Extract individual scores (lifestyle and convenience are pre-computed by their services)
         safety_score = crime_data.get('destination', {}).get('safety_score', 70)
         affordability_score = cost_data.get('destination', {}).get('affordability_score', 70)
         environment_score = noise_data.get('destination', {}).get('noise_score', 70)
-        lifestyle_score = self._calculate_lifestyle_score(amenities_data) if amenities_data else 70
-        convenience_score = self._calculate_convenience_score(commute_data) if commute_data else 70
+        lifestyle_score = amenities_data.get('lifestyle_score', 70) if amenities_data else 70
+        convenience_score = commute_data.get('convenience_score', 70) if commute_data else 70
         
         # Calculate weighted overall score
         overall_score = (
@@ -48,16 +48,7 @@ class ScoringService:
         
         # Generate grade
         grade = self._score_to_grade(overall_score)
-        
-        # Generate comparison insights
-        comparison_insights = self._generate_comparison_insights(
-            crime_data,
-            noise_data,
-            cost_data,
-            amenities_data,
-            commute_data
-        )
-        
+
         return {
             'overall_score': round(overall_score, 1),
             'grade': grade,
@@ -93,7 +84,6 @@ class ScoringService:
                     'status': self._get_score_status(convenience_score)
                 }
             },
-            'comparison_insights': comparison_insights,
             'strengths': self._identify_strengths(
                 safety_score, affordability_score, environment_score,
                 lifestyle_score, convenience_score
@@ -109,80 +99,6 @@ class ScoringService:
                 environment_score
             )
         }
-    
-    def _calculate_lifestyle_score(self, amenities_data: Dict[str, Any]) -> float:
-        """
-        Calculate lifestyle score from amenities data
-        """
-        if not amenities_data:
-            return 10.0
-        
-        # Get destination amenities dictionary
-        dest_amenities = amenities_data.get('destination_amenities', {})
-        
-        if not dest_amenities:
-            return 10.0
-        
-        # Count total amenities (sum all categories)
-        total_count = sum(dest_amenities.values())
-        
-        print(f"🔍 Lifestyle: {total_count} total amenities")
-        print(f"   Breakdown: {dest_amenities}")
-        
-        # Score based on total count
-        if total_count >= 50:
-            score = 100.0
-        elif total_count >= 30:
-            score = 90.0
-        elif total_count >= 20:
-            score = 75.0
-        elif total_count >= 10:
-            score = 60.0
-        elif total_count >= 5:
-            score = 40.0
-        else:
-            score = 20.0
-        
-        # Bonus for variety (multiple types)
-        variety_bonus = min(len(dest_amenities.keys()) * 3, 15)
-        final_score = min(score + variety_bonus, 100.0)
-        
-        print(f"   Score: {score} + {variety_bonus} variety = {final_score}")
-        
-        return final_score
-    
-    def _calculate_convenience_score(self, commute_data: Dict[str, Any]) -> float:
-        """
-        Calculate convenience score from commute data
-        
-        Factors:
-        - Commute duration
-        - Traffic conditions
-        - Transportation options
-        """
-        if not commute_data:
-            return 70
-
-        # Work from home: perfect convenience score
-        if commute_data.get('method') == 'none' or commute_data.get('duration_minutes') == 0:
-            return 100.0
-
-        duration_minutes = commute_data.get('duration_minutes', 30)
-        
-        # Ideal commute: 20 minutes or less = 100 points
-        # Each additional minute reduces score
-        if duration_minutes <= 20:
-            base_score = 100
-        elif duration_minutes <= 30:
-            base_score = 90 - (duration_minutes - 20)
-        elif duration_minutes <= 45:
-            base_score = 80 - ((duration_minutes - 30) * 1.5)
-        elif duration_minutes <= 60:
-            base_score = 60 - ((duration_minutes - 45) * 2)
-        else:
-            base_score = max(20, 30 - ((duration_minutes - 60) * 0.5))
-        
-        return round(base_score, 1)
     
     def _score_to_grade(self, score: float) -> str:
         """Convert numeric score to letter grade"""
@@ -219,49 +135,6 @@ class ScoringService:
             return 'Needs Attention'
         else:
             return 'Concerning'
-    
-    def _generate_comparison_insights(
-        self,
-        crime_data: Dict[str, Any],
-        noise_data: Dict[str, Any],
-        cost_data: Dict[str, Any],
-        amenities_data: Optional[Dict[str, Any]],
-        commute_data: Optional[Dict[str, Any]]
-    ) -> Dict[str, str]:
-        """Generate comparative insights between current and destination"""
-        
-        insights = {}
-        
-        # Crime comparison
-        crime_comp = crime_data.get('comparison', {})
-        crime_diff = crime_comp.get('score_difference', 0)
-        if crime_diff > 10:
-            insights['safety'] = f"Significantly safer ({crime_diff:+.1f} points)"
-        elif crime_diff > 0:
-            insights['safety'] = f"Slightly safer ({crime_diff:+.1f} points)"
-        elif crime_diff > -10:
-            insights['safety'] = f"Similar safety levels ({crime_diff:+.1f} points)"
-        else:
-            insights['safety'] = f"Less safe ({crime_diff:+.1f} points)"
-        
-        # Cost comparison
-        cost_comp = cost_data.get('comparison', {})
-        cost_diff = cost_comp.get('monthly_difference', 0)
-        if cost_diff < -200:
-            insights['affordability'] = f"Much cheaper (${abs(cost_diff):.0f}/month savings)"
-        elif cost_diff < 0:
-            insights['affordability'] = f"Slightly cheaper (${abs(cost_diff):.0f}/month savings)"
-        elif cost_diff < 200:
-            insights['affordability'] = f"Similar costs (${cost_diff:.0f}/month more)"
-        else:
-            insights['affordability'] = f"More expensive (${cost_diff:.0f}/month more)"
-        
-        # Noise comparison
-        noise_comp = noise_data.get('comparison', {})
-        db_diff = noise_comp.get('db_difference', 0)
-        insights['environment'] = noise_comp.get('recommendation', 'Similar noise levels')
-        
-        return insights
     
     def _identify_strengths(
         self,

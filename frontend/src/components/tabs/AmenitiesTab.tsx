@@ -123,7 +123,9 @@ const AmenitiesTab = ({ data }: any) => {
 
   const totalCurrent: number = Object.values(currentAmenities).reduce((a: number, b: number) => a + b, 0);
   const totalDestination: number = Object.values(destinationAmenities).reduce((a: number, b: number) => a + b, 0);
-  const percentChange: number = totalCurrent > 0 ? parseFloat((((totalDestination - totalCurrent) / totalCurrent) * 100).toFixed(1)) : 0;
+  const percentChange: number | null =
+    totalCurrent === 0 ? null :
+    parseFloat((((totalDestination - totalCurrent) / totalCurrent) * 100).toFixed(1));
 
   return (
     <div className="space-y-6">
@@ -156,9 +158,10 @@ const AmenitiesTab = ({ data }: any) => {
             <span className="text-sm font-medium text-gray-600">Change</span>
           </div>
           <div className={`text-4xl font-bold ${
+            percentChange === null ? 'text-gray-400' :
             percentChange > 0 ? 'text-green-600' : percentChange < 0 ? 'text-red-600' : 'text-gray-900'
           }`}>
-            {percentChange > 0 ? '+' : ''}{percentChange}%
+            {percentChange === null ? 'N/A' : `${percentChange > 0 ? '+' : ''}${percentChange}%`}
           </div>
           <div className="mt-2 text-sm text-gray-600">
             vs current location
