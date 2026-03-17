@@ -27,3 +27,4 @@ Thumbs.db
 *.log
 .vercel
 .env*.local
+.claude/settings.local.json
