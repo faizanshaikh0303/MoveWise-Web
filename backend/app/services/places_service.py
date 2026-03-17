@@ -72,7 +72,7 @@ class PlacesService:
             ('train stations', {'type': 'train_station'}),
             ('_subway_stations', {'type': 'subway_station'}),
             ('bus stations',   {'type': 'bus_station'}),
-            ('airports',       {'type': 'airport'}),
+            ('airports',       {'keyword': 'airport'}),
         ]
 
         # Build ordered list of (display_name, search_params) to avoid duplicates
