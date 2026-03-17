@@ -92,14 +92,8 @@ class ScoringService:
                 safety_score, affordability_score, environment_score,
                 lifestyle_score, convenience_score
             ),
-            'recommendation': self._generate_overall_recommendation(
-                overall_score,
-                safety_score,
-                affordability_score,
-                environment_score
-            )
         }
-    
+
     def _score_to_grade(self, score: float) -> str:
         """Convert numeric score to letter grade"""
         if score >= 90:
@@ -192,35 +186,6 @@ class ScoringService:
         concerns.sort(key=lambda x: x['score'])
         
         return concerns
-    
-    def _generate_overall_recommendation(
-        self,
-        overall_score: float,
-        safety_score: float,
-        affordability_score: float,
-        environment_score: float
-    ) -> str:
-        """Generate overall move recommendation"""
-        
-        # Critical factors: safety and affordability
-        critical_threshold = 50
-        
-        if safety_score < critical_threshold:
-            return "⚠️ Proceed with caution. Safety scores are concerning. Consider visiting the area and researching crime patterns before committing."
-        
-        if affordability_score < critical_threshold:
-            return "⚠️ Financial concern. This move may strain your budget significantly. Ensure you have adequate income or savings."
-        
-        if overall_score >= 85:
-            return "✅ Highly recommended! This location scores well across all factors and appears to be an excellent fit."
-        elif overall_score >= 75:
-            return "✅ Recommended. This is a solid choice with strong performance in key areas."
-        elif overall_score >= 65:
-            return "👍 Good option. This location has both strengths and some trade-offs to consider."
-        elif overall_score >= 55:
-            return "⚖️ Mixed results. Carefully weigh the pros and cons based on your priorities."
-        else:
-            return "⚠️ Consider alternatives. This location has several concerning factors that may impact your quality of life."
     
 
 

@@ -3,6 +3,7 @@ Unit tests for ScoringService.
 """
 import pytest
 from app.services.scoring_service import ScoringService
+from app.services.places_service import PlacesService
 
 service = ScoringService()
 
@@ -32,12 +33,12 @@ def cost(affordability_score: float, monthly_diff: float = -200.0) -> dict:
     }
 
 
-def amenities(dest_counts: dict) -> dict:
-    return {"destination_amenities": dest_counts}
+def amenities(lifestyle_score: float) -> dict:
+    return {"lifestyle_score": lifestyle_score}
 
 
 def commute(duration_minutes, method="driving") -> dict:
-    return {"duration_minutes": duration_minutes, "method": method}
+    return {"duration_minutes": duration_minutes, "method": method, "convenience_score": 70.0}
 
 
 # ---------------------------------------------------------------------------
@@ -65,22 +66,22 @@ class TestWeights:
 class TestCalculateOverallScore:
     def test_returns_required_keys(self):
         result = service.calculate_overall_score(
-            crime(80), noise(80), cost(80), amenities({"cafes": 20}), commute(20)
+            crime(80), noise(80), cost(80), amenities(75.0), commute(20)
         )
         for key in ["overall_score", "grade", "component_scores",
-                    "comparison_insights", "strengths", "concerns", "recommendation"]:
+                    "strengths", "concerns"]:
             assert key in result
 
     def test_component_scores_have_all_categories(self):
         result = service.calculate_overall_score(
-            crime(80), noise(80), cost(80), amenities({"cafes": 20}), commute(20)
+            crime(80), noise(80), cost(80), amenities(75.0), commute(20)
         )
         for cat in ["safety", "affordability", "environment", "lifestyle", "convenience"]:
             assert cat in result["component_scores"]
 
     def test_overall_score_within_bounds(self):
         result = service.calculate_overall_score(
-            crime(100), noise(100), cost(100), amenities({"a": 60}), commute(5)
+            crime(100), noise(100), cost(100), amenities(90.0), commute(5)
         )
         assert 0 <= result["overall_score"] <= 100
 
@@ -97,11 +98,11 @@ class TestCalculateOverallScore:
         )
         # Without amenities/commute, defaults are 70/70
         expected = (
-            70 * 0.30 +  # safety
+            70 * 0.25 +  # safety
             70 * 0.25 +  # affordability
             70 * 0.20 +  # environment
             70 * 0.15 +  # lifestyle (default 70)
-            70 * 0.10    # convenience (default 70)
+            70 * 0.15    # convenience (default 70)
         )
         assert abs(result["overall_score"] - expected) < 0.5
 
@@ -179,33 +180,28 @@ class TestLifestyleScore:
     ])
     def test_score_tiers(self, total, expected_base):
         # Single category to minimise variety bonus
-        data = {"destination_amenities": {"cafes": total}}
-        score = service._calculate_lifestyle_score(data)
+        score = PlacesService._calculate_lifestyle_score({"cafes": total})
         # variety bonus for 1 category = 3 pts
         assert score >= expected_base
         assert score <= 100.0
 
     def test_variety_bonus_increases_score(self):
         # Same total amenities but spread across more categories
-        sparse = {"destination_amenities": {"cafes": 20}}
-        diverse = {"destination_amenities": {
+        score_sparse = PlacesService._calculate_lifestyle_score({"cafes": 20})
+        score_diverse = PlacesService._calculate_lifestyle_score({
             "cafes": 4, "restaurants": 4, "gyms": 4, "parks": 4, "libraries": 4
-        }}
-        score_sparse = service._calculate_lifestyle_score(sparse)
-        score_diverse = service._calculate_lifestyle_score(diverse)
+        })
         assert score_diverse > score_sparse
 
     def test_variety_bonus_capped_at_15(self):
         # 10 categories × 3 = 30, but capped at 15
         many_cats = {f"cat_{i}": 5 for i in range(10)}
-        data = {"destination_amenities": many_cats}
-        score = service._calculate_lifestyle_score(data)
+        score = PlacesService._calculate_lifestyle_score(many_cats)
         assert score <= 100.0
 
-    def test_no_amenities_returns_low_score(self):
-        assert service._calculate_lifestyle_score(None) == 10.0
-        assert service._calculate_lifestyle_score({}) == 10.0
-        assert service._calculate_lifestyle_score({"destination_amenities": {}}) == 10.0
+    def test_empty_amenities_returns_low_score(self):
+        score = PlacesService._calculate_lifestyle_score({})
+        assert score <= 23.0  # base 20 + no variety bonus
 
 
 # ---------------------------------------------------------------------------
@@ -214,11 +210,11 @@ class TestLifestyleScore:
 
 class TestConvenienceScore:
     def test_work_from_home_returns_100(self):
-        assert service._calculate_convenience_score({"duration_minutes": 0, "method": "none"}) == 100.0
-        assert service._calculate_convenience_score({"duration_minutes": 0, "method": "driving"}) == 100.0
+        assert PlacesService._calculate_convenience_score({"duration_minutes": 0, "method": "none"}) == 100.0
+        assert PlacesService._calculate_convenience_score({"duration_minutes": 0, "method": "driving"}) == 100.0
 
     def test_method_none_returns_100(self):
-        assert service._calculate_convenience_score({"method": "none"}) == 100.0
+        assert PlacesService._calculate_convenience_score({"method": "none"}) == 100.0
 
     @pytest.mark.parametrize("duration,min_expected,max_expected", [
         (10,  100, 100),   # ≤ 20 min → 100
@@ -232,12 +228,11 @@ class TestConvenienceScore:
         (90,  20,  30),    # > 60
     ])
     def test_duration_score_ranges(self, duration, min_expected, max_expected):
-        score = service._calculate_convenience_score({"duration_minutes": duration, "method": "driving"})
+        score = PlacesService._calculate_convenience_score({"duration_minutes": duration, "method": "driving"})
         assert min_expected <= score <= max_expected
 
-    def test_no_commute_data_returns_default(self):
-        assert service._calculate_convenience_score(None) == 70
-        assert service._calculate_convenience_score({}) == 70
+    def test_no_duration_returns_default(self):
+        assert PlacesService._calculate_convenience_score({}) == 70
 
 
 # ---------------------------------------------------------------------------
@@ -274,29 +269,4 @@ class TestStrengthsAndConcerns:
     def test_no_concerns_when_all_above_60(self):
         assert service._identify_concerns(65, 65, 65, 65, 65) == []
 
-
-# ---------------------------------------------------------------------------
-# _generate_overall_recommendation
-# ---------------------------------------------------------------------------
-
-class TestRecommendation:
-    def test_low_safety_triggers_caution(self):
-        rec = service._generate_overall_recommendation(70, 45, 80, 80)
-        assert "caution" in rec.lower() or "safety" in rec.lower()
-
-    def test_low_affordability_triggers_financial_warning(self):
-        rec = service._generate_overall_recommendation(70, 80, 45, 80)
-        assert "financial" in rec.lower() or "budget" in rec.lower()
-
-    def test_high_overall_score_is_recommended(self):
-        rec = service._generate_overall_recommendation(90, 85, 80, 80)
-        assert "recommended" in rec.lower() or "excellent" in rec.lower()
-
-    def test_score_above_75_is_recommended(self):
-        rec = service._generate_overall_recommendation(78, 80, 80, 80)
-        assert "recommended" in rec.lower() or "solid" in rec.lower()
-
-    def test_low_overall_score_suggests_alternatives(self):
-        rec = service._generate_overall_recommendation(40, 80, 80, 80)
-        assert any(word in rec.lower() for word in ["concern", "alternative", "caution", "mixed"])
 
