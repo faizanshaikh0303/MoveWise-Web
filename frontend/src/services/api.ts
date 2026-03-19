@@ -110,4 +110,15 @@ export const analysisAPI = {
   },
 };
 
+// Chat API
+export const chatAPI = {
+  send: async (
+    message: string,
+    history: { role: string; content: string }[]
+  ): Promise<{ reply: string; tool_calls: { tool: string; args: Record<string, unknown> }[] }> => {
+    const response = await api.post('/chat/', { message, history });
+    return response.data;
+  },
+};
+
 export default api;
