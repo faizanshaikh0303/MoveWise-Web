@@ -24,7 +24,7 @@ const STARTERS = [
   'Which move saves me the most money?',
   'Which destination is safest?',
   'Compare all my analyses',
-  'What's the best overall move?',
+  'What is the best overall move?',
 ];
 
 export default function DashboardChat() {
