@@ -442,7 +442,8 @@ def get_analysis(
         "overview_summary": analysis.overview_summary or "Analysis complete.",
         "lifestyle_changes": analysis.lifestyle_changes if analysis.lifestyle_changes else [],
         "ai_insights": analysis.ai_insights or "",
-        
+        "action_steps": json.loads(analysis.action_steps_json) if analysis.action_steps_json else [],
+
         # Metadata
         "created_at": analysis.created_at.isoformat() if analysis.created_at else None
     }
