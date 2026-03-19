@@ -26,7 +26,7 @@ import {
   Cell
 } from 'recharts';
 
-const CostTab = ({ data }) => {
+const CostTab = ({ data, affordabilityScore: propScore }) => {
   const current = data?.current || {};
   const destination = data?.destination || {};
   const comparison = data?.comparison || {};
@@ -95,7 +95,7 @@ const CostTab = ({ data }) => {
     color: cat.color
   }));
 
-  const affordabilityScore = destination.affordability_score || 0;
+  const affordabilityScore = propScore ?? 0;
   const scoreColor = affordabilityScore >= 70 ? 'text-green-600' : affordabilityScore >= 50 ? 'text-yellow-600' : 'text-red-600';
   const scoreBgColor = affordabilityScore >= 70 ? 'bg-green-50' : affordabilityScore >= 50 ? 'bg-yellow-50' : 'bg-red-50';
 

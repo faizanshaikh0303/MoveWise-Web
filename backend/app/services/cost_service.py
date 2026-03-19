@@ -81,18 +81,6 @@ class CostService:
 
     # ── Scoring ────────────────────────────────────────────────────────────────
 
-    def _affordability_score(self, total: float) -> float:
-        """0-100 (higher = more affordable), benchmarked against national median."""
-        ratio = total / _NATIONAL_MEDIAN
-        if ratio <= 0.70:  return 100.0
-        if ratio <= 0.85:  return 90.0
-        if ratio <= 1.00:  return 80.0
-        if ratio <= 1.15:  return 70.0
-        if ratio <= 1.30:  return 60.0
-        if ratio <= 1.50:  return 50.0
-        if ratio <= 1.70:  return 40.0
-        return max(20.0, round(40.0 - (ratio - 1.70) * 50, 1))
-
     def _recommendation(self, diff: float, pct: float) -> str:
         if diff < -200:
             return f"Great savings! You'll save ${abs(diff):.0f}/month (${abs(diff)*12:.0f}/year). Consider investing the difference."
@@ -116,7 +104,6 @@ class CostService:
         return {
             'total_monthly':      round(total, 2),
             'total_annual':       round(total * 12, 2),
-            'affordability_score': self._affordability_score(total),
             'cost_index':         cost_index,
             'data_source':        'Cost of Living 2025 (City Averages)',
             'housing': {
@@ -149,9 +136,6 @@ class CostService:
                 'annual_difference':   round(diff * 12, 2),
                 'percent_change':      pct,
                 'is_more_expensive':   diff > 0,
-                'score_difference':    round(
-                    destination['affordability_score'] - current['affordability_score'], 1
-                ),
                 'recommendation':      self._recommendation(diff, pct),
             },
         }
