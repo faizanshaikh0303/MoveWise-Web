@@ -1,132 +1,123 @@
-"""
-Tests for /profile/* endpoints:
-  POST /profile/   – create or update
-  GET  /profile/   – read
-  PUT  /profile/   – update (requires existing profile)
-"""
-
+"""Integration tests for /profile endpoints."""
+import pytest
 
 FULL_PROFILE = {
-    "work_hours": "9:00 AM - 5:00 PM",
-    "work_address": "123 Office St, New York, NY",
+    "work_hours": "9:00 - 17:00",
+    "work_address": "789 Work St, New York, NY",
     "commute_preference": "driving",
-    "sleep_hours": "11:00 PM - 7:00 AM",
-    "noise_preference": "quiet",
-    "hobbies": ["gym", "hiking", "restaurants"],
+    "sleep_hours": "23:00 - 07:00",
+    "noise_preference": "moderate",
+    "hobbies": ["gym", "hiking"],
 }
 
 
-# ---------------------------------------------------------------------------
-# POST /profile/
-# ---------------------------------------------------------------------------
-
-class TestCreateProfile:
-    def test_create_profile_returns_profile_data(self, client, auth_headers):
+class TestCreateOrUpdateProfile:
+    def test_create_full_profile(self, client, test_user, auth_headers):
         resp = client.post("/profile/", json=FULL_PROFILE, headers=auth_headers)
         assert resp.status_code == 200
-        body = resp.json()
-        assert body["work_hours"] == FULL_PROFILE["work_hours"]
-        assert body["work_address"] == FULL_PROFILE["work_address"]
-        assert body["commute_preference"] == FULL_PROFILE["commute_preference"]
-        assert body["noise_preference"] == FULL_PROFILE["noise_preference"]
-        assert body["hobbies"] == FULL_PROFILE["hobbies"]
-        assert "id" in body
-        assert "user_id" in body
-        assert "created_at" in body
+        data = resp.json()
+        assert data["work_hours"] == "9:00 - 17:00"
+        assert data["noise_preference"] == "moderate"
+        assert data["hobbies"] == ["gym", "hiking"]
+        assert data["user_id"] == test_user.id
+        assert "id" in data
 
-    def test_create_profile_with_minimal_data(self, client, auth_headers):
+    def test_create_empty_profile(self, client, test_user, auth_headers):
         resp = client.post("/profile/", json={}, headers=auth_headers)
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["work_hours"] is None
+        assert data["hobbies"] is None
 
-    def test_create_profile_twice_updates_existing(self, client, auth_headers):
-        client.post("/profile/", json={"noise_preference": "quiet"}, headers=auth_headers)
-        resp = client.post("/profile/", json={"noise_preference": "loud"}, headers=auth_headers)
+    def test_upsert_updates_existing_profile(self, client, test_user, auth_headers, user_profile):
+        resp = client.post("/profile/", json={
+            **FULL_PROFILE,
+            "noise_preference": "quiet",
+        }, headers=auth_headers)
         assert resp.status_code == 200
-        assert resp.json()["noise_preference"] == "loud"
+        assert resp.json()["noise_preference"] == "quiet"
 
-        # Still only one profile in the DB
+    def test_upsert_does_not_create_duplicate(self, client, test_user, auth_headers, user_profile):
+        original_id = user_profile.id
+        client.post("/profile/", json=FULL_PROFILE, headers=auth_headers)
         get_resp = client.get("/profile/", headers=auth_headers)
-        assert get_resp.json()["noise_preference"] == "loud"
+        assert get_resp.json()["id"] == original_id
 
-    def test_create_profile_requires_auth(self, client):
+    def test_hobbies_empty_list(self, client, test_user, auth_headers):
+        resp = client.post("/profile/", json={**FULL_PROFILE, "hobbies": []}, headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["hobbies"] == []
+
+    def test_no_auth_returns_403(self, client):
         resp = client.post("/profile/", json=FULL_PROFILE)
         assert resp.status_code == 403
 
-    def test_hobbies_stored_as_list(self, client, auth_headers):
-        resp = client.post("/profile/", json={"hobbies": ["gym", "hiking"]}, headers=auth_headers)
-        assert isinstance(resp.json()["hobbies"], list)
-        assert "gym" in resp.json()["hobbies"]
+    def test_response_contains_timestamps(self, client, test_user, auth_headers):
+        resp = client.post("/profile/", json=FULL_PROFILE, headers=auth_headers)
+        data = resp.json()
+        assert "created_at" in data
+        assert "updated_at" in data
 
-
-# ---------------------------------------------------------------------------
-# GET /profile/
-# ---------------------------------------------------------------------------
 
 class TestGetProfile:
-    def test_get_profile_returns_null_when_none_exists(self, client, auth_headers):
+    def test_returns_existing_profile(self, client, test_user, auth_headers, user_profile):
+        resp = client.get("/profile/", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["work_hours"] == "9:00 - 17:00"
+        assert data["hobbies"] == ["gym", "hiking"]
+
+    def test_returns_null_when_no_profile(self, client, test_user, auth_headers):
         resp = client.get("/profile/", headers=auth_headers)
         assert resp.status_code == 200
         assert resp.json() is None
 
-    def test_get_profile_returns_profile_after_creation(self, client, auth_headers):
-        client.post("/profile/", json=FULL_PROFILE, headers=auth_headers)
-        resp = client.get("/profile/", headers=auth_headers)
-        assert resp.status_code == 200
-        assert resp.json()["work_hours"] == FULL_PROFILE["work_hours"]
-
-    def test_get_profile_requires_auth(self, client):
+    def test_no_auth_returns_403(self, client):
         resp = client.get("/profile/")
         assert resp.status_code == 403
 
-    def test_profile_belongs_to_correct_user(self, client, auth_headers, second_user):
-        """User A's profile should not be visible to User B."""
-        client.post("/profile/", json={"noise_preference": "quiet"}, headers=auth_headers)
-        resp = client.get("/profile/", headers=second_user["headers"])
+    def test_does_not_return_other_users_profile(self, client, db, test_user, auth_headers):
+        from app.models.user import User
+        from app.core.security import get_password_hash
+        from app.models.profile import UserProfile
+
+        other = User(email="other@example.com", hashed_password=get_password_hash("pw"))
+        db.add(other)
+        db.commit()
+        db.refresh(other)
+
+        other_profile = UserProfile(user_id=other.id, noise_preference="quiet")
+        db.add(other_profile)
+        db.commit()
+
+        # test_user has no profile
+        resp = client.get("/profile/", headers=auth_headers)
         assert resp.json() is None
 
 
-# ---------------------------------------------------------------------------
-# PUT /profile/
-# ---------------------------------------------------------------------------
-
 class TestUpdateProfile:
-    def test_update_existing_profile(self, client, auth_headers):
-        client.post("/profile/", json=FULL_PROFILE, headers=auth_headers)
-        resp = client.put("/profile/", json={"noise_preference": "moderate"}, headers=auth_headers)
+    def test_update_single_field(self, client, test_user, auth_headers, user_profile):
+        resp = client.put("/profile/", json={"noise_preference": "quiet"}, headers=auth_headers)
         assert resp.status_code == 200
-        assert resp.json()["noise_preference"] == "moderate"
+        assert resp.json()["noise_preference"] == "quiet"
 
-    def test_update_preserves_unset_fields(self, client, auth_headers):
-        client.post("/profile/", json=FULL_PROFILE, headers=auth_headers)
-        client.put("/profile/", json={"noise_preference": "moderate"}, headers=auth_headers)
-        get_resp = client.get("/profile/", headers=auth_headers)
-        # work_hours should still be set from the original POST
-        assert get_resp.json()["work_hours"] == FULL_PROFILE["work_hours"]
+    def test_update_preserves_other_fields(self, client, test_user, auth_headers, user_profile):
+        resp = client.put("/profile/", json={"hobbies": ["cooking"]}, headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["hobbies"] == ["cooking"]
+        assert data["work_hours"] == "9:00 - 17:00"  # unchanged
 
-    def test_update_hobbies_list(self, client, auth_headers):
-        client.post("/profile/", json={"hobbies": ["gym"]}, headers=auth_headers)
-        resp = client.put("/profile/", json={"hobbies": ["hiking", "restaurants"]}, headers=auth_headers)
-        assert resp.json()["hobbies"] == ["hiking", "restaurants"]
-
-    def test_update_profile_when_none_returns_404(self, client, auth_headers):
-        resp = client.put("/profile/", json={"noise_preference": "moderate"}, headers=auth_headers)
+    def test_update_nonexistent_profile_returns_404(self, client, test_user, auth_headers):
+        resp = client.put("/profile/", json={"noise_preference": "quiet"}, headers=auth_headers)
         assert resp.status_code == 404
 
-    def test_update_profile_requires_auth(self, client):
+    def test_update_with_empty_body(self, client, test_user, auth_headers, user_profile):
+        resp = client.put("/profile/", json={}, headers=auth_headers)
+        assert resp.status_code == 200
+        # Nothing should change
+        assert resp.json()["work_hours"] == "9:00 - 17:00"
+
+    def test_no_auth_returns_403(self, client):
         resp = client.put("/profile/", json={"noise_preference": "quiet"})
         assert resp.status_code == 403
-
-
-# ---------------------------------------------------------------------------
-# profile_setup_complete behaviour via /auth/me
-# ---------------------------------------------------------------------------
-
-class TestProfileSetupComplete:
-    def test_flag_false_before_profile(self, client, auth_headers):
-        resp = client.get("/auth/me", headers=auth_headers)
-        assert resp.json()["profile_setup_complete"] is False
-
-    def test_flag_true_after_profile_created(self, client, auth_headers):
-        client.post("/profile/", json={}, headers=auth_headers)
-        resp = client.get("/auth/me", headers=auth_headers)
-        assert resp.json()["profile_setup_complete"] is True

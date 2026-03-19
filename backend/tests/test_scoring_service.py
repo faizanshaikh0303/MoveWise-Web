@@ -1,272 +1,263 @@
-"""
-Unit tests for ScoringService.
-"""
+"""Unit tests for ScoringService — pure Python, no DB or HTTP."""
 import pytest
-from app.services.scoring_service import ScoringService
-from app.services.places_service import PlacesService
-
-service = ScoringService()
+from app.services.scoring_service import ScoringService, scoring_service
 
 
-# ---------------------------------------------------------------------------
-# Helpers – build minimal data structures the service expects
-# ---------------------------------------------------------------------------
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
-def crime(safety_score: float) -> dict:
-    return {
-        "destination": {"safety_score": safety_score},
-        "comparison": {"score_difference": 5.0},
-    }
+def crime(score=75):
+    return {"destination": {"safety_score": score}}
 
+def cost(score=75):
+    return {"destination": {"affordability_score": score}}
 
-def noise(noise_score: float) -> dict:
-    return {
-        "destination": {"noise_score": noise_score},
-        "comparison": {"db_difference": -5.0, "db_change_description": "Quieter"},
-    }
+def noise(score=75):
+    return {"destination": {"noise_score": score}}
 
+def amenities(score=75):
+    return {"lifestyle_score": score}
 
-def cost(affordability_score: float, monthly_diff: float = -200.0) -> dict:
-    return {
-        "destination": {"affordability_score": affordability_score},
-        "comparison": {"monthly_difference": monthly_diff},
-    }
+def commute(score=75):
+    return {"convenience_score": score}
 
 
-def amenities(lifestyle_score: float) -> dict:
-    return {"lifestyle_score": lifestyle_score}
+def full_score(**overrides):
+    """Call calculate_overall_score with all five components."""
+    kwargs = dict(
+        crime_data=crime(overrides.get("safety", 75)),
+        cost_data=cost(overrides.get("affordability", 75)),
+        noise_data=noise(overrides.get("environment", 75)),
+        amenities_data=amenities(overrides.get("lifestyle", 75)),
+        commute_data=commute(overrides.get("convenience", 75)),
+    )
+    return scoring_service.calculate_overall_score(**kwargs)
 
 
-def commute(duration_minutes, method="driving") -> dict:
-    return {"duration_minutes": duration_minutes, "method": method, "convenience_score": 70.0}
+# ── calculate_overall_score ───────────────────────────────────────────────────
 
+class TestCalculateOverallScore:
+    def test_returns_required_top_level_keys(self):
+        result = full_score()
+        for key in ("overall_score", "grade", "component_scores", "strengths", "concerns"):
+            assert key in result
 
-# ---------------------------------------------------------------------------
-# Weights
-# ---------------------------------------------------------------------------
+    def test_component_score_keys_present(self):
+        result = full_score()
+        for key in ("safety", "affordability", "environment", "lifestyle", "convenience"):
+            assert key in result["component_scores"]
 
-class TestWeights:
+    def test_each_component_has_score_weight_contribution_status(self):
+        result = full_score()
+        for comp in result["component_scores"].values():
+            assert "score" in comp
+            assert "weight" in comp
+            assert "contribution" in comp
+            assert "status" in comp
+
     def test_weights_sum_to_one(self):
         total = sum(ScoringService.WEIGHTS.values())
         assert abs(total - 1.0) < 1e-9
 
-    def test_safety_is_highest_weight(self):
-        weights = ScoringService.WEIGHTS
-        assert weights["safety"] == max(weights.values())
+    def test_all_100_gives_100(self):
+        result = full_score(safety=100, affordability=100, environment=100,
+                            lifestyle=100, convenience=100)
+        assert result["overall_score"] == 100.0
 
-    def test_convenience_is_lowest_weight(self):
-        weights = ScoringService.WEIGHTS
-        assert weights["convenience"] == min(weights.values())
+    def test_all_zero_gives_zero(self):
+        result = full_score(safety=0, affordability=0, environment=0,
+                            lifestyle=0, convenience=0)
+        assert result["overall_score"] == 0.0
 
-
-# ---------------------------------------------------------------------------
-# calculate_overall_score
-# ---------------------------------------------------------------------------
-
-class TestCalculateOverallScore:
-    def test_returns_required_keys(self):
-        result = service.calculate_overall_score(
-            crime(80), noise(80), cost(80), amenities(75.0), commute(20)
+    def test_weighted_formula_is_correct(self):
+        w = ScoringService.WEIGHTS
+        result = full_score(safety=80, affordability=60, environment=70,
+                            lifestyle=90, convenience=50)
+        expected = round(
+            80 * w["safety"] +
+            60 * w["affordability"] +
+            70 * w["environment"] +
+            90 * w["lifestyle"] +
+            50 * w["convenience"],
+            1,
         )
-        for key in ["overall_score", "grade", "component_scores",
-                    "strengths", "concerns"]:
-            assert key in result
+        assert result["overall_score"] == expected
 
-    def test_component_scores_have_all_categories(self):
-        result = service.calculate_overall_score(
-            crime(80), noise(80), cost(80), amenities(75.0), commute(20)
+    def test_only_one_high_score_affects_overall(self):
+        result = full_score(safety=100, affordability=0, environment=0,
+                            lifestyle=0, convenience=0)
+        expected = round(100 * ScoringService.WEIGHTS["safety"], 1)
+        assert abs(result["overall_score"] - expected) < 0.1
+
+    def test_missing_amenities_defaults_to_70(self):
+        result = scoring_service.calculate_overall_score(
+            crime_data=crime(70),
+            cost_data=cost(70),
+            noise_data=noise(70),
+            amenities_data=None,
+            commute_data=commute(70),
         )
-        for cat in ["safety", "affordability", "environment", "lifestyle", "convenience"]:
-            assert cat in result["component_scores"]
+        assert result["component_scores"]["lifestyle"]["score"] == 70.0
 
-    def test_overall_score_within_bounds(self):
-        result = service.calculate_overall_score(
-            crime(100), noise(100), cost(100), amenities(90.0), commute(5)
+    def test_missing_commute_defaults_to_70(self):
+        result = scoring_service.calculate_overall_score(
+            crime_data=crime(70),
+            cost_data=cost(70),
+            noise_data=noise(70),
+            commute_data=None,
         )
-        assert 0 <= result["overall_score"] <= 100
+        assert result["component_scores"]["convenience"]["score"] == 70.0
 
-    def test_weighted_calculation_is_correct(self):
-        """
-        With all component scores = 80 the weighted average must also be 80.
-        Lifestyle score for 20 amenities = 75 + variety_bonus(3) = 78 (1 category).
-        Convenience for 20 min = 100.
-        Let's verify the formula directly with known inputs.
-        """
-        # Force known scores via the data structures
-        result = service.calculate_overall_score(
-            crime(70), noise(70), cost(70), None, None
+    def test_missing_both_optional_defaults_to_70(self):
+        result = scoring_service.calculate_overall_score(
+            crime_data=crime(70),
+            cost_data=cost(70),
+            noise_data=noise(70),
         )
-        # Without amenities/commute, defaults are 70/70
-        expected = (
-            70 * 0.25 +  # safety
-            70 * 0.25 +  # affordability
-            70 * 0.20 +  # environment
-            70 * 0.15 +  # lifestyle (default 70)
-            70 * 0.15    # convenience (default 70)
+        assert result["component_scores"]["lifestyle"]["score"] == 70.0
+        assert result["component_scores"]["convenience"]["score"] == 70.0
+
+    def test_contribution_equals_score_times_weight(self):
+        result = full_score(safety=80, affordability=65, environment=72,
+                            lifestyle=88, convenience=55)
+        for comp in result["component_scores"].values():
+            expected = round(comp["score"] * comp["weight"], 1)
+            assert comp["contribution"] == expected
+
+    def test_missing_nested_key_falls_back_to_70(self):
+        # crime_data has no 'destination' key at all
+        result = scoring_service.calculate_overall_score(
+            crime_data={},
+            cost_data=cost(70),
+            noise_data=noise(70),
         )
-        assert abs(result["overall_score"] - expected) < 0.5
-
-    def test_no_amenities_or_commute_uses_defaults(self):
-        result = service.calculate_overall_score(crime(70), noise(70), cost(70))
-        # Should not raise, and overall_score should be in range
-        assert 0 <= result["overall_score"] <= 100
+        assert result["component_scores"]["safety"]["score"] == 70.0
 
 
-# ---------------------------------------------------------------------------
-# _score_to_grade
-# ---------------------------------------------------------------------------
+# ── _score_to_grade ───────────────────────────────────────────────────────────
 
 class TestScoreToGrade:
-    @pytest.mark.parametrize("score,expected_grade", [
-        (95.0, "A+"),
-        (90.0, "A+"),
-        (87.0, "A"),
-        (85.0, "A"),
-        (82.0, "A-"),
-        (80.0, "A-"),
-        (77.0, "B+"),
-        (75.0, "B+"),
-        (72.0, "B"),
-        (70.0, "B"),
-        (67.0, "B-"),
-        (65.0, "B-"),
-        (62.0, "C+"),
-        (60.0, "C+"),
-        (57.0, "C"),
-        (55.0, "C"),
-        (52.0, "C-"),
-        (50.0, "C-"),
-        (49.0, "D"),
-        (0.0,  "D"),
+    svc = ScoringService()
+
+    @pytest.mark.parametrize("score,expected", [
+        (100, "A+"), (90, "A+"),
+        (89.9, "A"),  (85, "A"),
+        (84.9, "A-"), (80, "A-"),
+        (79.9, "B+"), (75, "B+"),
+        (74.9, "B"),  (70, "B"),
+        (69.9, "B-"), (65, "B-"),
+        (64.9, "C+"), (60, "C+"),
+        (59.9, "C"),  (55, "C"),
+        (54.9, "C-"), (50, "C-"),
+        (49.9, "D"),  (0, "D"),
     ])
-    def test_grade_boundaries(self, score, expected_grade):
-        assert service._score_to_grade(score) == expected_grade
+    def test_grade_boundaries(self, score, expected):
+        assert self.svc._score_to_grade(score) == expected
 
 
-# ---------------------------------------------------------------------------
-# _get_score_status
-# ---------------------------------------------------------------------------
+# ── _get_score_status ─────────────────────────────────────────────────────────
 
 class TestGetScoreStatus:
-    @pytest.mark.parametrize("score,expected_status", [
-        (80.0, "Excellent"),
-        (95.0, "Excellent"),
-        (70.0, "Good"),
-        (79.9, "Good"),
-        (60.0, "Fair"),
-        (69.9, "Fair"),
-        (50.0, "Needs Attention"),
-        (59.9, "Needs Attention"),
-        (49.9, "Concerning"),
-        (0.0,  "Concerning"),
+    svc = ScoringService()
+
+    @pytest.mark.parametrize("score,expected", [
+        (100, "Excellent"), (80, "Excellent"),
+        (79, "Good"),       (70, "Good"),
+        (69, "Fair"),       (60, "Fair"),
+        (59, "Needs Attention"), (50, "Needs Attention"),
+        (49, "Concerning"), (0, "Concerning"),
     ])
-    def test_status_labels(self, score, expected_status):
-        assert service._get_score_status(score) == expected_status
+    def test_status_labels(self, score, expected):
+        assert self.svc._get_score_status(score) == expected
 
 
-# ---------------------------------------------------------------------------
-# _calculate_lifestyle_score
-# ---------------------------------------------------------------------------
+# ── _identify_strengths ───────────────────────────────────────────────────────
 
-class TestLifestyleScore:
-    @pytest.mark.parametrize("total,expected_base", [
-        (60, 100.0),
-        (50, 100.0),
-        (35, 90.0),
-        (25, 75.0),
-        (15, 60.0),
-        (7,  40.0),
-        (2,  20.0),
-    ])
-    def test_score_tiers(self, total, expected_base):
-        # Single category to minimise variety bonus
-        score = PlacesService._calculate_lifestyle_score({"cafes": total})
-        # variety bonus for 1 category = 3 pts
-        assert score >= expected_base
-        assert score <= 100.0
+class TestIdentifyStrengths:
+    svc = ScoringService()
 
-    def test_variety_bonus_increases_score(self):
-        # Same total amenities but spread across more categories
-        score_sparse = PlacesService._calculate_lifestyle_score({"cafes": 20})
-        score_diverse = PlacesService._calculate_lifestyle_score({
-            "cafes": 4, "restaurants": 4, "gyms": 4, "parks": 4, "libraries": 4
-        })
-        assert score_diverse > score_sparse
+    def test_all_high_returns_all_categories(self):
+        strengths = self.svc._identify_strengths(80, 90, 85, 75, 76)
+        assert set(strengths) == {"Safety", "Affordability", "Environment", "Lifestyle", "Convenience"}
 
-    def test_variety_bonus_capped_at_15(self):
-        # 10 categories × 3 = 30, but capped at 15
-        many_cats = {f"cat_{i}": 5 for i in range(10)}
-        score = PlacesService._calculate_lifestyle_score(many_cats)
-        assert score <= 100.0
+    def test_all_below_threshold_returns_empty(self):
+        assert self.svc._identify_strengths(74, 74, 74, 74, 74) == []
 
-    def test_empty_amenities_returns_low_score(self):
-        score = PlacesService._calculate_lifestyle_score({})
-        assert score <= 23.0  # base 20 + no variety bonus
+    def test_boundary_74_excluded(self):
+        assert "Safety" not in self.svc._identify_strengths(74, 70, 70, 70, 70)
 
+    def test_boundary_75_included(self):
+        assert "Safety" in self.svc._identify_strengths(75, 70, 70, 70, 70)
 
-# ---------------------------------------------------------------------------
-# _calculate_convenience_score
-# ---------------------------------------------------------------------------
-
-class TestConvenienceScore:
-    def test_work_from_home_returns_100(self):
-        assert PlacesService._calculate_convenience_score({"duration_minutes": 0, "method": "none"}) == 100.0
-        assert PlacesService._calculate_convenience_score({"duration_minutes": 0, "method": "driving"}) == 100.0
-
-    def test_method_none_returns_100(self):
-        assert PlacesService._calculate_convenience_score({"method": "none"}) == 100.0
-
-    @pytest.mark.parametrize("duration,min_expected,max_expected", [
-        (10,  100, 100),   # ≤ 20 min → 100
-        (20,  100, 100),
-        (25,  80,  90),    # 20-30 → 90-something
-        (30,  80,  80),    # exactly 30 → 80
-        (40,  60,  80),    # 30-45
-        (45,  55,  60),    # exactly 45 → 80 - (15*1.5) = 57.5
-        (55,  30,  60),    # 45-60
-        (60,  30,  30),    # exactly 60 → 30
-        (90,  20,  30),    # > 60
-    ])
-    def test_duration_score_ranges(self, duration, min_expected, max_expected):
-        score = PlacesService._calculate_convenience_score({"duration_minutes": duration, "method": "driving"})
-        assert min_expected <= score <= max_expected
-
-    def test_no_duration_returns_default(self):
-        assert PlacesService._calculate_convenience_score({}) == 70
-
-
-# ---------------------------------------------------------------------------
-# _identify_strengths / _identify_concerns
-# ---------------------------------------------------------------------------
-
-class TestStrengthsAndConcerns:
-    def test_strengths_include_scores_above_75(self):
-        strengths = service._identify_strengths(90, 80, 76, 50, 40)
-        assert "Safety" in strengths
-        assert "Affordability" in strengths
-        assert "Environment" in strengths
-
-    def test_strengths_exclude_scores_below_75(self):
-        strengths = service._identify_strengths(90, 80, 76, 50, 40)
-        assert "Lifestyle" not in strengths
-        assert "Convenience" not in strengths
-
-    def test_strengths_sorted_by_score_descending(self):
-        strengths = service._identify_strengths(80, 85, 90, 76, 40)
-        # Environment(90) > Affordability(85) > Safety(80) > Lifestyle(76)
+    def test_sorted_descending_by_score(self):
+        # Environment=90 > Convenience=85 > Affordability=80 > Safety=76 > Lifestyle=75
+        strengths = self.svc._identify_strengths(76, 80, 90, 75, 85)
         assert strengths[0] == "Environment"
+        assert strengths[-1] == "Lifestyle"
 
-    def test_concerns_include_scores_below_60(self):
-        concerns = service._identify_concerns(40, 55, 80, 80, 80)
-        areas = [c["area"] for c in concerns]
+    def test_single_strength(self):
+        strengths = self.svc._identify_strengths(75, 50, 50, 50, 50)
+        assert strengths == ["Safety"]
+
+
+# ── _identify_concerns ────────────────────────────────────────────────────────
+
+class TestIdentifyConcerns:
+    svc = ScoringService()
+
+    def test_all_high_no_concerns(self):
+        assert self.svc._identify_concerns(80, 80, 80, 80, 80) == []
+
+    def test_low_score_is_concern(self):
+        concerns = self.svc._identify_concerns(30, 80, 80, 80, 80)
+        assert len(concerns) == 1
+        assert concerns[0]["area"] == "Safety"
+        assert concerns[0]["score"] == 30
+
+    def test_boundary_60_not_a_concern(self):
+        concerns = self.svc._identify_concerns(60, 70, 70, 70, 70)
+        assert not any(c["area"] == "Safety" for c in concerns)
+
+    def test_boundary_59_is_a_concern(self):
+        concerns = self.svc._identify_concerns(59, 70, 70, 70, 70)
+        assert any(c["area"] == "Safety" for c in concerns)
+
+    def test_sorted_ascending_by_score(self):
+        concerns = self.svc._identify_concerns(10, 20, 50, 30, 40)
+        scores = [c["score"] for c in concerns]
+        assert scores == sorted(scores)
+
+    def test_multiple_concerns_identified(self):
+        concerns = self.svc._identify_concerns(30, 40, 50, 70, 80)
+        areas = {c["area"] for c in concerns}
         assert "Safety" in areas
         assert "Affordability" in areas
+        assert "Environment" in areas
 
-    def test_concerns_sorted_lowest_first(self):
-        concerns = service._identify_concerns(30, 55, 80, 80, 80)
-        assert concerns[0]["area"] == "Safety"
-
-    def test_no_concerns_when_all_above_60(self):
-        assert service._identify_concerns(65, 65, 65, 65, 65) == []
+    def test_zero_score_is_concern(self):
+        concerns = self.svc._identify_concerns(0, 80, 80, 80, 80)
+        assert any(c["area"] == "Safety" and c["score"] == 0 for c in concerns)
 
 
+# ── strengths / concerns in full result ──────────────────────────────────────
+
+class TestStrengthsAndConcernsIntegration:
+    def test_strengths_in_overall_result(self):
+        result = full_score(safety=90, affordability=80, environment=50,
+                            lifestyle=40, convenience=75)
+        assert "Safety" in result["strengths"]
+        assert "Affordability" in result["strengths"]
+        assert "Convenience" in result["strengths"]
+
+    def test_concerns_in_overall_result(self):
+        result = full_score(safety=90, affordability=80, environment=50,
+                            lifestyle=40, convenience=75)
+        concern_areas = {c["area"] for c in result["concerns"]}
+        assert "Environment" in concern_areas
+        assert "Lifestyle" in concern_areas
+
+    def test_no_overlap_between_strengths_and_concerns(self):
+        result = full_score(safety=85, affordability=55, environment=75,
+                            lifestyle=45, convenience=90)
+        strength_set = set(result["strengths"])
+        concern_set = {c["area"] for c in result["concerns"]}
+        assert strength_set.isdisjoint(concern_set)

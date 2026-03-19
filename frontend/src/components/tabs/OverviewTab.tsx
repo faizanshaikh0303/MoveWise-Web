@@ -69,12 +69,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ analysis }) => {
   const isWFH = commuteData.method === 'none' || commuteData.duration_minutes === 0;
 
   const overallScore = analysis.overall_score || 0;
-  const grade =
-    overallScore >= 90 ? 'A+' :
-    overallScore >= 80 ? 'A'  :
-    overallScore >= 70 ? 'B'  :
-    overallScore >= 60 ? 'C'  :
-    overallScore >= 50 ? 'D'  : 'F';
+  const grade = analysis.grade || 'D';
 
   const gradeColor =
     overallScore >= 80 ? 'text-emerald-400' :
