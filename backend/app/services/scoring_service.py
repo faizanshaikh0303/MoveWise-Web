@@ -32,7 +32,10 @@ class ScoringService:
         
         # Extract individual scores (lifestyle and convenience are pre-computed by their services)
         safety_score = crime_data.get('destination', {}).get('safety_score', 70)
-        affordability_score = cost_data.get('destination', {}).get('affordability_score', 70)
+        affordability_score = self._relative_cost_score(
+            cost_data.get('current', {}).get('total_monthly', 0),
+            cost_data.get('destination', {}).get('total_monthly', 0),
+        )
         environment_score = noise_data.get('destination', {}).get('noise_score', 70)
         lifestyle_score = amenities_data.get('lifestyle_score', 70) if amenities_data else 70
         convenience_score = commute_data.get('convenience_score', 70) if commute_data else 70
@@ -93,6 +96,25 @@ class ScoringService:
                 lifestyle_score, convenience_score
             ),
         }
+
+    def _relative_cost_score(self, current_monthly: float, dest_monthly: float) -> float:
+        """
+        Score affordability relative to where the user is moving FROM.
+        Negative pct_change = cheaper destination (better score).
+        """
+        if current_monthly <= 0:
+            return 70.0
+        pct = (dest_monthly - current_monthly) / current_monthly
+        if pct <= -0.30: return 100.0
+        if pct <= -0.20: return 92.0
+        if pct <= -0.10: return 85.0
+        if pct <= -0.05: return 78.0
+        if pct <=  0.00: return 75.0
+        if pct <=  0.05: return 68.0
+        if pct <=  0.10: return 60.0
+        if pct <=  0.20: return 50.0
+        if pct <=  0.30: return 40.0
+        return max(20.0, round(40.0 - (pct - 0.30) * 60, 1))
 
     def _score_to_grade(self, score: float) -> str:
         """Convert numeric score to letter grade"""

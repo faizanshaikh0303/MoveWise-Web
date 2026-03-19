@@ -326,7 +326,7 @@ async def create_analysis(
             # NEW: Individual component scores
             crime_safety_score=crime_data.get('destination', {}).get('safety_score', 70),
             noise_environment_score=noise_data.get('destination', {}).get('noise_score', 70),
-            cost_affordability_score=cost_data.get('destination', {}).get('affordability_score', 70),
+            cost_affordability_score=scores['component_scores']['affordability']['score'],
             lifestyle_score=scores['component_scores']['lifestyle']['score'],
             convenience_score=scores['component_scores']['convenience']['score'],
             
