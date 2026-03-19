@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import {
   Shield, DollarSign, Volume2, MapPin, Clock,
-  ArrowRight, TrendingUp, TrendingDown,
+  ArrowRight, TrendingUp,
   CheckCircle, Lightbulb, Sparkles, ArrowUpRight, ArrowDownRight
 } from 'lucide-react';
 
