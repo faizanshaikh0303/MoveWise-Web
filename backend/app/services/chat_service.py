@@ -80,6 +80,44 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "filter_analyses",
+            "description": (
+                "Filter analyses by current or destination address keywords, then rank "
+                "the matches. Use this when the user specifies a location filter like "
+                "'analyses from NY', 'moves to Texas', or 'where I'm moving from California'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "current_address_contains": {
+                        "type": "string",
+                        "description": (
+                            "Case-insensitive substring to match against the current "
+                            "(origin) address. E.g. 'NY', 'California', 'New York'."
+                        ),
+                    },
+                    "destination_address_contains": {
+                        "type": "string",
+                        "description": (
+                            "Case-insensitive substring to match against the destination "
+                            "address. E.g. 'TX', 'Austin', 'Texas'."
+                        ),
+                    },
+                    "priority": {
+                        "type": "string",
+                        "enum": [
+                            "safety", "affordability", "noise",
+                            "lifestyle", "commute", "overall",
+                        ],
+                        "description": "Rank the filtered results by this criterion.",
+                    },
+                },
+            },
+        },
+    },
 ]
 
 
@@ -222,6 +260,62 @@ Never fabricate data — only use what the tools return."""
                 ],
             }, indent=2)
 
+        if tool_name == "filter_analyses":
+            current_filter = (tool_args.get("current_address_contains") or "").lower()
+            dest_filter = (tool_args.get("destination_address_contains") or "").lower()
+            priority = tool_args.get("priority", "overall")
+
+            matches = [
+                a for a in analyses_by_id.values()
+                if (not current_filter or current_filter in a["current_address"].lower())
+                and (not dest_filter or dest_filter in a["destination_address"].lower())
+            ]
+
+            if not matches:
+                return json.dumps({
+                    "filtered": [],
+                    "message": (
+                        f"No analyses found matching "
+                        f"{'current address containing ' + repr(current_filter) if current_filter else ''}"
+                        f"{'destination address containing ' + repr(dest_filter) if dest_filter else ''}."
+                        " Try a broader keyword."
+                    ),
+                })
+
+            score_key = {
+                "safety": "safety_score",
+                "affordability": "affordability_score",
+                "noise": "environment_score",
+                "lifestyle": "lifestyle_score",
+                "commute": "convenience_score",
+                "overall": "overall_score",
+            }.get(priority, "overall_score")
+
+            matches.sort(key=lambda a: -(a.get(score_key) or 0))
+
+            return json.dumps({
+                "filter": {
+                    "current_contains": current_filter or None,
+                    "destination_contains": dest_filter or None,
+                },
+                "priority": priority,
+                "count": len(matches),
+                "ranked": [
+                    {
+                        "rank": i + 1,
+                        "id": a["id"],
+                        "from": a["current_address"],
+                        "to": a["destination_address"],
+                        "overall_score": a.get("overall_score"),
+                        "grade": a.get("grade"),
+                        score_key: a.get(score_key),
+                        "monthly_difference": a.get("cost_data", {})
+                            .get("comparison", {}).get("monthly_difference"),
+                    }
+                    for i, a in enumerate(matches)
+                ],
+            }, indent=2)
+
         return f"Unknown tool: {tool_name}"
 
     # ── Main agentic loop ─────────────────────────────────────────────────────
@@ -242,8 +336,8 @@ Never fabricate data — only use what the tools return."""
         tool_calls_made: List[Dict] = []
 
         try:
-            # Agentic loop — up to 3 tool-call rounds
-            for _ in range(3):
+            # Agentic loop — up to 5 tool-call rounds for complex queries
+            for _ in range(5):
                 response = self.client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=messages,
