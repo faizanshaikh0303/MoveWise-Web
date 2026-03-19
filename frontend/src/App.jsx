@@ -1,6 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
-import { useAuthStore } from '@/stores/authStore.ts';
 import { wakeUpBackend } from '@/utils/wakeBackend.ts';
 
 // Pages
@@ -17,15 +16,9 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import BackendStatusIndicator from '@/components/BackendStatusIndicator';
 
 function App() {
-  const fetchUser = useAuthStore((state) => state.fetchUser);
-
   useEffect(() => {
-    // Wake up backend immediately on app load
     wakeUpBackend();
-    
-    // Check if user is logged in on mount
-    fetchUser();
-  }, [fetchUser]);
+  }, []);
 
   return (
     <>

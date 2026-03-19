@@ -93,9 +93,13 @@ export const useAuthStore = create<AuthState>()(
 
           const user = await authAPI.getCurrentUser();
           set({ user, isAuthenticated: true, token });
-        } catch (error) {
-          localStorage.removeItem('token');
-          set({ token: null, user: null, isAuthenticated: false });
+        } catch (error: any) {
+          // Only clear auth on 401 Unauthorized (invalid/expired token).
+          // Network errors (backend sleeping, timeout, etc.) should not log the user out.
+          if (error.response?.status === 401) {
+            localStorage.removeItem('token');
+            set({ token: null, user: null, isAuthenticated: false });
+          }
         }
       },
 

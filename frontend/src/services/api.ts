@@ -29,6 +29,21 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Clear auth state on 401 (token expired/invalid)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      // Dynamically import to avoid circular dependency
+      import('@/stores/authStore').then(({ useAuthStore }) => {
+        useAuthStore.getState().logout();
+      });
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Auth API
 export const authAPI = {
   register: async (data: RegisterData): Promise<AuthResponse> => {
