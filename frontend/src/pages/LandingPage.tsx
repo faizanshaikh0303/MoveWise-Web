@@ -1,8 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '@/stores/authStore';
 
 const LandingPage = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuthStore();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate(user?.profile_setup_complete ? '/dashboard' : '/profile-setup', { replace: true });
+    }
+  }, [isAuthenticated, user, navigate]);
   const [scrollY, setScrollY] = useState(0);
   const [mousePosition, setMousePosition] = useState({ x: 0.5, y: 0.5 });
 

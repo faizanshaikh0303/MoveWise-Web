@@ -18,8 +18,6 @@ const ProtectedRoute = ({ children, requiresProfile = false }: ProtectedRoutePro
     }
   }, [hydrated]);
 
-  console.log('[ProtectedRoute]', { hydrated, isAuthenticated, hasToken: !!localStorage.getItem('token') });
-
   if (!hydrated) {
     return null;
   }
