@@ -124,7 +124,7 @@ async def create_analysis(
                 request.current_address, request.destination_address
             )
             print(f"✓ Cost: ${data['destination']['total_monthly']:,.2f}/month"
-                  f" | Affordability: {data['destination']['affordability_score']}/100")
+                  f" | Index: {data['destination']['cost_index']}")
             return data
 
         async def fetch_commute():
