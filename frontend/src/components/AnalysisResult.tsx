@@ -112,8 +112,8 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis, onBack }) => 
             {activeTab === 'crime' && <CrimeTab data={analysis.crime_data || {}} />}
             {activeTab === 'cost' && <CostTab data={analysis.cost_data || {}} affordabilityScore={analysis.affordability_score} />}
             {activeTab === 'noise' && <NoiseTab data={analysis.noise_data || {}} />}
-            {activeTab === 'amenities' && <AmenitiesTab data={analysis.amenities_data || {}} />}
-            {activeTab === 'commute' && <CommuteTab data={analysis.commute_data || {}} />}
+            {activeTab === 'amenities' && <AmenitiesTab data={analysis.amenities_data || {}} lifestyleScore={analysis.lifestyle_score} />}
+            {activeTab === 'commute' && <CommuteTab data={analysis.commute_data || {}} convenienceScore={analysis.convenience_score} />}
           </motion.div>
         </AnimatePresence>
       </div>

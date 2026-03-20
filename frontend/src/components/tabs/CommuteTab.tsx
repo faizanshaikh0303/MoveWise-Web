@@ -17,9 +17,10 @@ interface CommuteData {
 
 interface CommuteTabProps {
   data: CommuteData;
+  convenienceScore?: number;
 }
 
-const CommuteTab: React.FC<CommuteTabProps> = ({ data }) => {
+const CommuteTab: React.FC<CommuteTabProps> = ({ data, convenienceScore }) => {
   const isWorkFromHome = data?.method === 'none' || data?.duration_minutes === 0;
 
   const duration = data?.duration_minutes || 0;
@@ -51,15 +52,17 @@ const CommuteTab: React.FC<CommuteTabProps> = ({ data }) => {
   const MethodIcon = getMethodIcon(method);
   const methodColor = getMethodColor(method);
 
-  const getCommuteQuality = (minutes: number) => {
-    if (minutes < 20) return { label: 'Excellent', color: 'green', score: 95 };
-    if (minutes < 30) return { label: 'Good', color: 'blue', score: 80 };
-    if (minutes < 45) return { label: 'Fair', color: 'yellow', score: 65 };
-    if (minutes < 60) return { label: 'Long', color: 'orange', score: 50 };
-    return { label: 'Very Long', color: 'red', score: 30 };
+  const getCommuteQuality = (score: number) => {
+    if (score >= 90) return { label: 'Excellent', color: 'green', score };
+    if (score >= 75) return { label: 'Good', color: 'blue', score };
+    if (score >= 60) return { label: 'Fair', color: 'yellow', score };
+    if (score >= 45) return { label: 'Long', color: 'orange', score };
+    return { label: 'Very Long', color: 'red', score };
   };
 
-  const quality = getCommuteQuality(duration);
+  const quality = getCommuteQuality(convenienceScore ?? (
+    duration < 20 ? 95 : duration < 30 ? 80 : duration < 45 ? 65 : duration < 60 ? 50 : 30
+  ));
 
   // Calculate CO2 estimates
   const getCO2Estimate = () => {

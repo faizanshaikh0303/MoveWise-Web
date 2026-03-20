@@ -31,7 +31,7 @@ interface MarkerType {
   color: string;
 }
 
-const AmenitiesTab = ({ data }: any) => {
+const AmenitiesTab = ({ data, lifestyleScore }: { data: any; lifestyleScore?: number }) => {
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
@@ -136,14 +136,18 @@ const AmenitiesTab = ({ data }: any) => {
           className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">Total Amenities</span>
+            <span className="text-sm font-medium text-gray-600">Lifestyle Score</span>
             <MapPin className="h-5 w-5 text-blue-500" />
           </div>
-          <div className="text-4xl font-bold text-gray-900">
-            {totalDestination}
+          <div className={`text-4xl font-bold ${
+            lifestyleScore == null ? 'text-gray-400' :
+            lifestyleScore >= 75 ? 'text-green-600' :
+            lifestyleScore >= 60 ? 'text-yellow-600' : 'text-red-600'
+          }`}>
+            {lifestyleScore != null ? `${lifestyleScore}` : 'N/A'}
           </div>
           <div className="mt-2 text-sm text-gray-600">
-            within 1 mile
+            out of 100
           </div>
         </motion.div>
 
