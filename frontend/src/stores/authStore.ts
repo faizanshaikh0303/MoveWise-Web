@@ -85,6 +85,7 @@ export const useAuthStore = create<AuthState>()(
       version: 1,
       migrate: (stored: any) => {
         delete stored.token;
+        localStorage.removeItem('token');
         return stored;
       },
       partialize: (state) => ({
