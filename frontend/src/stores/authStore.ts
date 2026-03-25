@@ -44,9 +44,6 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
             isLoading: false,
           });
-          import('@/stores/analysisStore').then(({ useAnalysisStore }) => {
-            useAnalysisStore.getState().fetchAnalyses();
-          });
         } catch (error: any) {
           set({
             error: error.response?.data?.detail || 'Login failed',
@@ -70,9 +67,6 @@ export const useAuthStore = create<AuthState>()(
             user,
             isAuthenticated: true,
             isLoading: false,
-          });
-          import('@/stores/analysisStore').then(({ useAnalysisStore }) => {
-            useAnalysisStore.getState().fetchAnalyses();
           });
         } catch (error: any) {
           set({
