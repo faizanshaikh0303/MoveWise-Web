@@ -260,19 +260,26 @@ async def run_analysis_background(analysis_id: int) -> None:
             'commute_preference':(user_profile.commute_preference if user_profile else None) or 'driving',
         }
 
-        current_lat = float(analysis.current_lat)
-        current_lng = float(analysis.current_lng)
-        dest_lat    = float(analysis.destination_lat)
-        dest_lng    = float(analysis.destination_lng)
-        user_id     = analysis.user_id
+        current_address = analysis.current_address
+        dest_address    = analysis.destination_address
+        user_id         = analysis.user_id
 
         # Release DB connection before the long async pipeline
         db.close()
         db = None
 
+        # Geocode both addresses (moved here so POST /analysis/ returns instantly)
+        from app.services.places_service import places_service
+        (current_lat, current_lng), (dest_lat, dest_lng) = await asyncio.gather(
+            asyncio.to_thread(places_service.geocode_address, current_address),
+            asyncio.to_thread(places_service.geocode_address, dest_address),
+        )
+        if not current_lat or not dest_lat:
+            raise ValueError(f"Could not geocode addresses: '{current_address}' or '{dest_address}'")
+
         result = await _run_pipeline(
-            current_lat, current_lng, analysis.current_address,
-            dest_lat, dest_lng, analysis.destination_address,
+            current_lat, current_lng, current_address,
+            dest_lat, dest_lng, dest_address,
             user_preferences,
         )
 
@@ -280,6 +287,10 @@ async def run_analysis_background(analysis_id: int) -> None:
         analysis = db.query(Analysis).filter(Analysis.id == analysis_id).first()
         for field, value in result.items():
             setattr(analysis, field, value)
+        analysis.current_lat = str(current_lat)
+        analysis.current_lng = str(current_lng)
+        analysis.destination_lat = str(dest_lat)
+        analysis.destination_lng = str(dest_lng)
         analysis.status = 'completed'
         db.commit()
         logger.info("Analysis %d completed (score=%.1f)", analysis_id, result.get('overall_weighted_score', 0))

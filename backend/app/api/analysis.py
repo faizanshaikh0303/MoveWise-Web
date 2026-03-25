@@ -5,48 +5,29 @@ from app.models.user import User
 from app.models.analysis import Analysis
 from app.schemas.analysis import AnalysisRequest, AnalysisResponse, AnalysisList
 from app.api.auth import get_current_user
-from app.services.places_service import places_service
 
 from typing import List
-import asyncio
 import json
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
 
 @router.post("/", response_model=AnalysisResponse)
-async def create_analysis(
+def create_analysis(
     request: AnalysisRequest,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Geocode both addresses, create a pending Analysis record, then dispatch
-    a Celery background task to run all API calls. Returns immediately.
+    Create a pending Analysis record and immediately return.
+    Geocoding + all API calls happen in the background task.
     """
     try:
-        # Geocode both addresses in parallel (fast, needed to store coords)
-        (current_lat, current_lng), (dest_lat, dest_lng) = await asyncio.gather(
-            asyncio.to_thread(places_service.geocode_address, request.current_address),
-            asyncio.to_thread(places_service.geocode_address, request.destination_address),
-        )
-
-        if not current_lat or not dest_lat:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Could not geocode one or both addresses"
-            )
-
-        # Create the pending record
         new_analysis = Analysis(
             user_id=current_user.id,
             current_address=request.current_address,
-            current_lat=str(current_lat),
-            current_lng=str(current_lng),
             destination_address=request.destination_address,
-            destination_lat=str(dest_lat),
-            destination_lng=str(dest_lng),
             status='pending',
         )
         db.add(new_analysis)
@@ -59,8 +40,6 @@ async def create_analysis(
         print(f"Analysis {new_analysis.id} queued for user {current_user.id}")
         return new_analysis
 
-    except HTTPException:
-        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(
