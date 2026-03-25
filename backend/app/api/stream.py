@@ -74,11 +74,16 @@ async def stream_analysis_updates(
     async def generate():
         import redis.asyncio as aioredis
 
-        r = aioredis.from_url(redis_url, decode_responses=True)
-        pubsub = r.pubsub()
-        await pubsub.subscribe(channel)
-        logger.info("SSE: user %d subscribed to %s", user_id, channel)
+        try:
+            r = aioredis.from_url(redis_url, decode_responses=True)
+            pubsub = r.pubsub()
+            await pubsub.subscribe(channel)
+        except Exception as e:
+            logger.error("SSE: Redis connection failed for user %d: %s", user_id, e)
+            yield ": redis-unavailable\n\n"
+            return
 
+        logger.info("SSE: user %d subscribed to %s", user_id, channel)
         loop = asyncio.get_running_loop()
         last_ping = loop.time()
         try:
@@ -86,9 +91,13 @@ async def stream_analysis_updates(
                 if await request.is_disconnected():
                     break
 
-                msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-                now = loop.time()
+                try:
+                    msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                except Exception as e:
+                    logger.warning("SSE: Redis read error for user %d: %s", user_id, e)
+                    break
 
+                now = loop.time()
                 if msg and msg["type"] == "message":
                     analysis_id = msg["data"]
                     logger.info("SSE: pushing analysis %s to user %d", analysis_id, user_id)
@@ -99,8 +108,11 @@ async def stream_analysis_updates(
 
                 await asyncio.sleep(0.5)
         finally:
-            await pubsub.unsubscribe(channel)
-            await r.aclose()
+            try:
+                await pubsub.unsubscribe(channel)
+                await r.aclose()
+            except Exception:
+                pass
             logger.info("SSE: user %d disconnected from %s", user_id, channel)
 
     return StreamingResponse(
