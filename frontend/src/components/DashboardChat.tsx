@@ -1,12 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, Sparkles, Search, BarChart2, Trophy } from 'lucide-react';
+import { X, Send, Sparkles, Search, BarChart2, Trophy } from 'lucide-react';
 import { chatAPI } from '../services/api';
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-  toolCalls?: { tool: string; args: Record<string, unknown> }[];
-}
+import { useChatStore } from '../stores/chatStore';
+import type { ChatMessage as Message } from '../stores/chatStore';
 
 const TOOL_LABELS: Record<string, string> = {
   get_analysis_details: 'Reading analysis details…',
@@ -28,9 +24,8 @@ const STARTERS = [
 ];
 
 export default function DashboardChat() {
-  const [open, setOpen] = useState(false);
+  const { messages, isOpen: open, setOpen, setMessages } = useChatStore();
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -66,6 +61,7 @@ export default function DashboardChat() {
       ]);
     } finally {
       setLoading(false);
+      setTimeout(() => inputRef.current?.focus(), 50);
     }
   };
 

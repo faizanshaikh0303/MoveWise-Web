@@ -4,7 +4,6 @@ import { useAuthStore } from '../stores/authStore.ts';
 import { useAnalysisStore } from '../stores/analysisStore';
 import { authAPI } from '../services/api';
 import { BarChart3, CalendarDays, MapPin, Plus, ChevronRight, ArrowDown } from 'lucide-react';
-import DashboardChat from '../components/DashboardChat';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -308,7 +307,6 @@ const Dashboard = () => {
         )}
       </div>
 
-      <DashboardChat />
     </div>
   );
 };

@@ -14,8 +14,12 @@ import AnalysisDetailPage from './pages/AnalysisDetailPage';
 // Components
 import ProtectedRoute from '@/components/ProtectedRoute';
 import BackendStatusIndicator from '@/components/BackendStatusIndicator';
+import DashboardChat from '@/components/DashboardChat';
+import { useAuthStore } from '@/stores/authStore.ts';
 
 function App() {
+  const { isAuthenticated, hasHydrated } = useAuthStore();
+
   useEffect(() => {
     wakeUpBackend();
   }, []);
@@ -76,6 +80,9 @@ function App() {
           {/* Catch all - redirect to landing page */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+
+        {/* Global chat widget — persists across all authenticated pages */}
+        {hasHydrated && isAuthenticated && <DashboardChat />}
       </BrowserRouter>
     </>
   );

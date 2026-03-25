@@ -63,6 +63,9 @@ export const useAuthStore = create<AuthState>()(
         import('@/stores/analysisStore').then(({ useAnalysisStore }) => {
           useAnalysisStore.getState().clearAnalyses();
         });
+        import('@/stores/chatStore').then(({ useChatStore }) => {
+          useChatStore.getState().clearChat();
+        });
         set({ token: null, user: null, isAuthenticated: false });
       },
 
