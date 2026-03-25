@@ -2,11 +2,24 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from app.core.config import settings
-from app.core.database import engine, Base
+from app.core.database import engine, Base, SessionLocal
 from app.api import auth, profile, analysis, chat, stream
 
-# Create database tables
+# Enable pgvector extension before creating tables
+with engine.connect() as _conn:
+    _conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    _conn.commit()
+
+# Create database tables (DocChunk requires vector extension to exist first)
 Base.metadata.create_all(bind=engine)
+
+# Create HNSW index for fast cosine similarity search on doc_chunks
+with engine.connect() as _conn:
+    _conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS doc_chunks_embedding_idx "
+        "ON doc_chunks USING hnsw (embedding vector_cosine_ops)"
+    ))
+    _conn.commit()
 
 # Add new columns to existing deployments without a full Alembic migration
 with engine.connect() as _conn:
@@ -22,6 +35,14 @@ with engine.connect() as _conn:
         "WHERE status='processing'"
     ))
     _conn.commit()
+
+# Seed RAG knowledge base (idempotent — skips unchanged chunks)
+try:
+    from app.services.rag_seeder import seed_knowledge_base
+    with SessionLocal() as _db:
+        seed_knowledge_base(_db)
+except Exception as _e:
+    print(f"[RAG] Seeding failed (non-fatal): {_e}")
 
 # Initialize FastAPI app
 app = FastAPI(

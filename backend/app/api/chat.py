@@ -84,4 +84,5 @@ def chat(
         history=history,
         analyses_summary=analyses_summary,
         analyses_by_id=analyses_by_id,
+        db=db,
     )

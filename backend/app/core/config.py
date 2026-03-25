@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # "development" | "production" — controls cookie security flags
     ENVIRONMENT: str = "development"
 
+    # Embeddings (for RAG knowledge base)
+    COHERE_API_KEY: Optional[str] = None
+
     # Optional APIs (with fallbacks)
     SPOTCRIME_API_KEY: Optional[str] = "public"
     FBI_API_KEY: Optional[str] = None          

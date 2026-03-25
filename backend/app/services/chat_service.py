@@ -1,8 +1,13 @@
 """Dashboard-level AI chat agent with tool calling (Groq + llama-3.3-70b)."""
 from groq import Groq
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 from app.core.config import settings
-from typing import List, Dict, Any
+from app.services.embedding_service import embedding_service
+from typing import List, Dict, Any, Optional
 import json
+
+RAG_SIMILARITY_THRESHOLD = 0.35  # tune if retrieval is too strict / too loose
 
 
 # ── Tool definitions (Groq / OpenAI-compatible function calling) ──────────────
@@ -83,6 +88,34 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "search_app_guide",
+            "description": (
+                "Search the MoveWise user guide to answer how-to, navigation, or "
+                "field/score explanation questions. Use this BEFORE answering any "
+                "question about how to use the app, navigate pages, set up a profile, "
+                "understand what a score means, or interpret any field or result. "
+                "Do NOT use this for questions about the user's specific saved analyses."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The user's question rephrased as a standalone search query.",
+                    },
+                    "section": {
+                        "type": "string",
+                        "enum": ["navigation", "scores", "fields_profile", "fields_analysis", "faq"],
+                        "description": "Optional: narrow the search to one section when the topic is clear.",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "filter_analyses",
             "description": (
                 "Filter analyses by current or destination address keywords, then rank "
@@ -149,19 +182,26 @@ You have full access to the user's {len(analyses_summary)} saved move analysis/a
 
 {rows}
 
-Use your tools proactively:
-- "Which move saves the most money?" → rank_analyses(priority="affordability")
-- "Tell me more about Austin" → get_analysis_details(analysis_id=<id>)
-- "Compare Austin and Denver" → compare_analyses(analysis_ids=[...])
-- "Which is safest?" → rank_analyses(priority="safety")
+Tool routing rules:
+- Use search_app_guide for ANY how-to, navigation, or explanation question:
+  "How do I set up my profile?" → search_app_guide(query="how to set up profile")
+  "What does the safety score mean?" → search_app_guide(query="safety score explanation", section="scores")
+  "How do I start a new analysis?" → search_app_guide(query="how to start new analysis", section="navigation")
+  "What is commute preference?" → search_app_guide(query="commute preference field", section="fields_profile")
+- Use analysis tools only for questions about THIS USER's specific saved data:
+  "Which move saves the most money?" → rank_analyses(priority="affordability")
+  "Tell me more about Austin" → get_analysis_details(analysis_id=<id>)
+  "Compare Austin and Denver" → compare_analyses(analysis_ids=[...])
+  "Which is safest?" → rank_analyses(priority="safety")
 
-Be concise and data-driven. Quote specific numbers when you have them.
-Never fabricate data — only use what the tools return."""
+Never fabricate app instructions — always call search_app_guide first for how-to questions.
+Never fabricate data — only use what the tools return.
+Be concise and data-driven. Quote specific numbers when you have them."""
 
     # ── Tool execution ────────────────────────────────────────────────────────
 
     def _execute_tool(
-        self, tool_name: str, tool_args: Dict, analyses_by_id: Dict
+        self, tool_name: str, tool_args: Dict, analyses_by_id: Dict, db: Optional[Session] = None
     ) -> str:
         if tool_name == "get_analysis_details":
             aid = tool_args.get("analysis_id")
@@ -316,6 +356,34 @@ Never fabricate data — only use what the tools return."""
                 ],
             }, indent=2)
 
+        if tool_name == "search_app_guide":
+            query = tool_args.get("query", "")
+            section_filter = tool_args.get("section")
+            if not query:
+                return json.dumps({"found": False, "message": "No query provided."})
+
+            vec = embedding_service.embed_text(query)
+            if vec is None:
+                return json.dumps({"found": False, "message": "Guide search is temporarily unavailable."})
+
+            sql = text("""
+                SELECT chunk_key, section, title, content,
+                       1 - (embedding <=> CAST(:qvec AS vector)) AS similarity
+                FROM doc_chunks
+                WHERE (:section IS NULL OR section = :section)
+                ORDER BY embedding <=> CAST(:qvec AS vector)
+                LIMIT 4
+            """)
+            rows = db.execute(sql, {"qvec": str(vec), "section": section_filter}).fetchall()
+            results = [
+                {"title": r.title, "section": r.section, "content": r.content, "similarity": round(r.similarity, 3)}
+                for r in rows
+                if r.similarity >= RAG_SIMILARITY_THRESHOLD
+            ]
+            if not results:
+                return json.dumps({"found": False, "message": "No relevant guide content found for that query."})
+            return json.dumps({"found": True, "results": results}, indent=2)
+
         return f"Unknown tool: {tool_name}"
 
     # ── Main agentic loop ─────────────────────────────────────────────────────
@@ -326,6 +394,7 @@ Never fabricate data — only use what the tools return."""
         history: List[Dict[str, str]],
         analyses_summary: List[Dict],
         analyses_by_id: Dict[int, Dict],
+        db: Optional[Session] = None,
     ) -> Dict[str, Any]:
         system_prompt = self._build_system_prompt(analyses_summary)
 
@@ -375,7 +444,7 @@ Never fabricate data — only use what the tools return."""
                 # Execute tools and feed results back
                 for tc in choice.message.tool_calls:
                     args = json.loads(tc.function.arguments)
-                    result = self._execute_tool(tc.function.name, args, analyses_by_id)
+                    result = self._execute_tool(tc.function.name, args, analyses_by_id, db)
                     tool_calls_made.append({"tool": tc.function.name, "args": args})
                     messages.append({
                         "role": "tool",
