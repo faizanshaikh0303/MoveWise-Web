@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from typing import Optional
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import verify_password, get_password_hash, create_access_token, decode_access_token
@@ -8,7 +8,6 @@ from app.schemas.user import UserCreate, UserLogin, UserResponse, Token, Passwor
 from app.core.config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-security = HTTPBearer()
 
 TOKEN_COOKIE = "access_token"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
@@ -76,34 +75,37 @@ def logout(response: Response):
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    access_token: Optional[str] = Cookie(None),
     db: Session = Depends(get_db)
 ) -> User:
-    """Get current authenticated user"""
-    
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    
+    """Get current authenticated user via httpOnly cookie."""
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+
+    payload = decode_access_token(access_token)
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials"
         )
-    
+
     email: str = payload.get("sub")
     if not email:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials"
         )
-    
+
     user = db.query(User).filter(User.email == email).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found"
         )
-    
+
     return user
 
 
