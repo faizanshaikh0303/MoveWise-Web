@@ -1,60 +1,78 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import verify_password, get_password_hash, create_access_token, decode_access_token
 from app.models.user import User
 from app.schemas.user import UserCreate, UserLogin, UserResponse, Token, PasswordChange
+from app.core.config import settings
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer()
 
+TOKEN_COOKIE = "access_token"
+COOKIE_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
+
+
+def _set_auth_cookie(response: Response, token: str) -> None:
+    """Set the JWT as a cookie. Flags depend on ENVIRONMENT."""
+    is_prod = settings.ENVIRONMENT == "production"
+    response.set_cookie(
+        key=TOKEN_COOKIE,
+        value=token,
+        httponly=True,
+        secure=is_prod,
+        samesite="none" if is_prod else "lax",
+        max_age=COOKIE_MAX_AGE,
+    )
+
 
 @router.post("/register", response_model=Token)
-def register(user_data: UserCreate, db: Session = Depends(get_db)):
+def register(response: Response, user_data: UserCreate, db: Session = Depends(get_db)):
     """Register a new user"""
-    
-    # Check if user already exists
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
-    
-    # Create new user
+
     hashed_password = get_password_hash(user_data.password)
-    new_user = User(
-        email=user_data.email,
-        name=user_data.name,
-        hashed_password=hashed_password
-    )
-    
+    new_user = User(email=user_data.email, name=user_data.name, hashed_password=hashed_password)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    
-    # Create access token
+
     access_token = create_access_token(data={"sub": new_user.email})
-    
+    _set_auth_cookie(response, access_token)
     return {"access_token": access_token, "token_type": "bearer"}
 
 
 @router.post("/login", response_model=Token)
-def login(credentials: UserLogin, db: Session = Depends(get_db)):
+def login(response: Response, credentials: UserLogin, db: Session = Depends(get_db)):
     """Login user"""
-    
-    # Find user
     user = db.query(User).filter(User.email == credentials.email).first()
     if not user or not verify_password(credentials.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
         )
-    
-    # Create access token
+
     access_token = create_access_token(data={"sub": user.email})
-    
+    _set_auth_cookie(response, access_token)
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.post("/logout")
+def logout(response: Response):
+    """Clear the auth cookie."""
+    is_prod = settings.ENVIRONMENT == "production"
+    response.delete_cookie(
+        key=TOKEN_COOKIE,
+        secure=is_prod,
+        samesite="none" if is_prod else "lax",
+    )
+    return {"message": "Logged out"}
 
 
 def get_current_user(

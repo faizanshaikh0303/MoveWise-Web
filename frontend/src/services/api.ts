@@ -18,6 +18,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // send cookies on every request (needed for SSE cookie auth)
 });
 
 // Add auth token to requests
@@ -59,6 +60,10 @@ export const authAPI = {
   getCurrentUser: async (): Promise<User> => {
     const response = await api.get<User>('/auth/me');
     return response.data;
+  },
+
+  logout: async (): Promise<void> => {
+    await api.post('/auth/logout');
   },
 
   changePassword: async (currentPassword: string, newPassword: string): Promise<{ message: string }> => {

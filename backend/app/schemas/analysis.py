@@ -13,6 +13,7 @@ class AnalysisResponse(BaseModel):
     id: int
     current_address: str
     destination_address: str
+    status: str = 'completed'
     crime_data: Optional[Dict[str, Any]] = None
     amenities_data: Optional[Dict[str, Any]] = None
     cost_data: Optional[Dict[str, Any]] = None
@@ -31,6 +32,7 @@ class AnalysisList(BaseModel):
     id: int
     current_address: str
     destination_address: str
+    status: str = 'completed'
     created_at: datetime
 
     class Config:

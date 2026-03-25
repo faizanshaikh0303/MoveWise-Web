@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore.ts';
-import { analysisAPI } from '../services/api';
+import { analysisAPI, authAPI } from '../services/api';
 import type { AnalysisSummary } from '../types';
 import { BarChart3, CalendarDays, MapPin, Plus, ChevronRight, ArrowDown } from 'lucide-react';
 import DashboardChat from '../components/DashboardChat';
@@ -15,6 +15,25 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchAnalyses();
+  }, []);
+
+  // SSE: listen for analysis completion events pushed by the backend
+  useEffect(() => {
+    const es = new EventSource(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/stream`, {
+      withCredentials: true, // send the httpOnly access_token cookie
+    });
+
+    es.onmessage = (event) => {
+      // Re-fetch the list so the completed card appears immediately
+      fetchAnalyses();
+    };
+
+    es.onerror = () => {
+      // Connection dropped (backend restart, network blip) — browser auto-reconnects
+      // No action needed; fetchAnalyses() will still be called on reconnect messages
+    };
+
+    return () => es.close();
   }, []);
 
   useEffect(() => {
@@ -43,7 +62,8 @@ const Dashboard = () => {
 
   const uniqueDestinations = new Set(analyses.map(a => a.destination_address)).size;
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try { await authAPI.logout(); } catch { /* ignore */ }
     logout();
     navigate('/');
   };
@@ -229,7 +249,7 @@ const Dashboard = () => {
                 onClick={() => navigate(`/analysis/${analysis.id}`)}
               >
                 {/* Card Header with Gradient */}
-                <div className="h-2 bg-gradient-to-r from-primary via-blue-600 to-purple-600"></div>
+                <div className={`h-2 ${analysis.status === 'pending' || analysis.status === 'processing' ? 'bg-gradient-to-r from-amber-400 to-orange-500 animate-pulse' : analysis.status === 'failed' ? 'bg-gradient-to-r from-red-400 to-red-600' : 'bg-gradient-to-r from-primary via-blue-600 to-purple-600'}`}></div>
                 
                 <div className="p-6">
                   {/* Icon and Date */}
@@ -276,11 +296,22 @@ const Dashboard = () => {
                     </div>
                   </div>
 
-                  {/* View Report Button */}
-                  <button className="w-full py-3 bg-gradient-to-r from-primary to-blue-600 text-white rounded-xl font-medium group-hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2">
-                    View Report
-                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                  </button>
+                  {/* Status / View Report */}
+                  {(analysis.status === 'pending' || analysis.status === 'processing') ? (
+                    <div className="w-full py-3 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl font-medium flex items-center justify-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-600"></div>
+                      Generating Report...
+                    </div>
+                  ) : analysis.status === 'failed' ? (
+                    <div className="w-full py-3 bg-red-50 border border-red-200 text-red-700 rounded-xl font-medium flex items-center justify-center gap-2">
+                      Analysis Failed — Tap to retry
+                    </div>
+                  ) : (
+                    <button className="w-full py-3 bg-gradient-to-r from-primary to-blue-600 text-white rounded-xl font-medium group-hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2">
+                      View Report
+                      <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

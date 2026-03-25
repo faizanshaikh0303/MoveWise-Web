@@ -88,11 +88,18 @@ class Analysis(Base):
     # ===================================
     # Data sources used: "fbi,howloud,osm,cost2024,google"
     data_sources = Column(String(500), nullable=True)
-    
+
     # Version tracking for analysis algorithm
     analysis_version = Column(String(10), nullable=True, index=True)
-    
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+    # ===================================
+    # Async Job Status
+    # ===================================
+    # pending → processing → completed | failed
+    status = Column(String(20), nullable=False, default='completed', server_default='completed')
+    error_message = Column(Text, nullable=True)
 
     # ===================================
     # Relationships

@@ -199,9 +199,24 @@ class CrimeService:
 
     async def _get_rates(self, address: str) -> Dict[str, Any]:
         """Return a dict with total rate, source, and per-category rates. Tries FBI API first."""
+        from app.core.redis_cache import cache_get, cache_set, CACHE_7_DAYS
+
+        state = self._state_from_address(address)
+
+        # Cache check — state-level data is valid for 7 days
+        if state:
+            cached = cache_get(self._cache_key(state))
+            if cached:
+                print(f"   CACHE HIT FBI {state}")
+                return cached
+
         result = await self._fetch_fbi_rates(address)
         if result:
+            if state:
+                cache_set(self._cache_key(state), result, ttl=CACHE_7_DAYS)
+                print(f"   CACHE SET FBI {state} (7 days)")
             return result
+
         rate = self._static_rate(address)
         return {
             'total':    rate,
@@ -308,6 +323,12 @@ class CrimeService:
         if diff > -10:
             return f"Safety levels are similar between locations (safety scores {dest_score:.0f} vs {current_score:.0f})."
         return f"The destination has higher crime rates. Safety score {dest_score:.0f} vs {current_score:.0f}. Consider reviewing local safety resources."
+
+    # ── Cache key ──────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _cache_key(state: str) -> str:
+        return f"fbi:state:{state.upper()}"
 
     # ── Public API ─────────────────────────────────────────────────────────────
 

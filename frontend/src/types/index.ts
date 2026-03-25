@@ -227,7 +227,8 @@ export interface Analysis {
   id: number;
   current_address: string;
   destination_address: string;
-  
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+
   // Scores
   overall_score: number;
   safety_score: number;
@@ -255,5 +256,6 @@ export interface AnalysisSummary {
   id: number;
   current_address: string;
   destination_address: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
   created_at: string;
 }

@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str
     GOOGLE_MAPS_API_KEY: str
     
+    # Redis (Upstash or any Redis-compatible URL)
+    REDIS_URL: Optional[str] = None
+
+    # "development" | "production" — controls cookie security flags
+    ENVIRONMENT: str = "development"
+
     # Optional APIs (with fallbacks)
     SPOTCRIME_API_KEY: Optional[str] = "public"
     FBI_API_KEY: Optional[str] = None          

@@ -22,13 +22,13 @@ const LocationInput = () => {
     setError('');
 
     try {
-      const analysis = await analysisAPI.create({
+      await analysisAPI.create({
         current_address: currentAddress,
         destination_address: destinationAddress,
       });
 
-      // Redirect to the analysis report
-      navigate(`/analysis/${analysis.id}`);
+      // Return to dashboard immediately — Celery runs the analysis in the background
+      navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to generate analysis. Please try again.');
       setLoading(false);
@@ -137,7 +137,7 @@ const LocationInput = () => {
               {loading ? (
                 <>
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  Generating Analysis...
+                  Queuing Analysis...
                 </>
               ) : (
                 <>
@@ -151,7 +151,7 @@ const LocationInput = () => {
 
             {loading && (
               <p className="text-center text-sm text-gray-600">
-                This may take 5-10 seconds while we gather data from multiple sources...
+                Submitting your request — you'll be redirected to the dashboard while the report generates...
               </p>
             )}
           </form>
