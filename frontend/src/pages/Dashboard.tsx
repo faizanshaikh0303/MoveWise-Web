@@ -1,20 +1,22 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore.ts';
-import { analysisAPI, authAPI } from '../services/api';
-import type { AnalysisSummary } from '../types';
+import { useAnalysisStore } from '../stores/analysisStore';
+import { authAPI } from '../services/api';
 import { BarChart3, CalendarDays, MapPin, Plus, ChevronRight, ArrowDown } from 'lucide-react';
 import DashboardChat from '../components/DashboardChat';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { logout, user } = useAuthStore();
-  const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { analyses, fetched, fetchAnalyses } = useAnalysisStore();
+  const [loading, setLoading] = useState(!fetched);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
-    fetchAnalyses();
+    if (!fetched) {
+      fetchAnalyses().finally(() => setLoading(false));
+    }
   }, []);
 
   // SSE: listen for analysis completion events pushed by the backend
@@ -23,14 +25,13 @@ const Dashboard = () => {
       withCredentials: true, // send the httpOnly access_token cookie
     });
 
-    es.onmessage = (event) => {
+    es.onmessage = () => {
       // Re-fetch the list so the completed card appears immediately
       fetchAnalyses();
     };
 
     es.onerror = () => {
       // Connection dropped (backend restart, network blip) — browser auto-reconnects
-      // No action needed; fetchAnalyses() will still be called on reconnect messages
     };
 
     return () => es.close();
@@ -38,7 +39,6 @@ const Dashboard = () => {
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      // Smooth cursor tracking with reduced sensitivity
       setMousePosition({
         x: e.clientX / window.innerWidth,
         y: e.clientY / window.innerHeight,
@@ -48,17 +48,6 @@ const Dashboard = () => {
     window.addEventListener('mousemove', handleMouseMove);
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
-
-  const fetchAnalyses = async () => {
-    try {
-      const data = await analysisAPI.getAll();
-      setAnalyses(data);
-    } catch (error) {
-      console.error('Failed to fetch analyses:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const uniqueDestinations = new Set(analyses.map(a => a.destination_address)).size;
 

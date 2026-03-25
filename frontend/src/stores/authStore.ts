@@ -44,6 +44,9 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
             isLoading: false,
           });
+          import('@/stores/analysisStore').then(({ useAnalysisStore }) => {
+            useAnalysisStore.getState().fetchAnalyses();
+          });
         } catch (error: any) {
           set({
             error: error.response?.data?.detail || 'Login failed',
@@ -57,16 +60,19 @@ export const useAuthStore = create<AuthState>()(
         try {
           set({ isLoading: true, error: null });
           const response = await authAPI.register({ email, password, name });
-          
+
           localStorage.setItem('token', response.access_token);
-          
+
           const user = await authAPI.getCurrentUser();
-          
+
           set({
             token: response.access_token,
             user,
             isAuthenticated: true,
             isLoading: false,
+          });
+          import('@/stores/analysisStore').then(({ useAnalysisStore }) => {
+            useAnalysisStore.getState().fetchAnalyses();
           });
         } catch (error: any) {
           set({
@@ -79,6 +85,9 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         localStorage.removeItem('token');
+        import('@/stores/analysisStore').then(({ useAnalysisStore }) => {
+          useAnalysisStore.getState().clearAnalyses();
+        });
         set({
           token: null,
           user: null,

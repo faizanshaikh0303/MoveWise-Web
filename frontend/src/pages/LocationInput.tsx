@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { analysisAPI } from '../services/api';
+import { useAnalysisStore } from '../stores/analysisStore';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 
 const LocationInput = () => {
   const navigate = useNavigate();
+  const { prependAnalysis } = useAnalysisStore();
   const [currentAddress, setCurrentAddress] = useState('');
   const [destinationAddress, setDestinationAddress] = useState('');
   const [loading, setLoading] = useState(false);
@@ -12,7 +14,7 @@ const LocationInput = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!currentAddress.trim() || !destinationAddress.trim()) {
       setError('Please enter both addresses');
       return;
@@ -22,12 +24,12 @@ const LocationInput = () => {
     setError('');
 
     try {
-      await analysisAPI.create({
+      const newAnalysis = await analysisAPI.create({
         current_address: currentAddress,
         destination_address: destinationAddress,
       });
 
-      // Return to dashboard immediately — Celery runs the analysis in the background
+      prependAnalysis(newAnalysis);
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to generate analysis. Please try again.');
