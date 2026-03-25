@@ -56,6 +56,7 @@ def get_user_analyses(
 ):
     """Get all analyses for current user"""
     
+    print(f"[DB] GET analyses for user {current_user.id}")
     analyses = db.query(Analysis).filter(
         Analysis.user_id == current_user.id
     ).order_by(Analysis.created_at.desc()).limit(limit).all()
