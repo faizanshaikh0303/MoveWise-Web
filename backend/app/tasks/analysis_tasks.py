@@ -18,8 +18,6 @@ import logging
 import traceback
 from datetime import datetime
 
-from app.core.celery_app import celery_app
-
 logger = logging.getLogger(__name__)
 
 
@@ -224,16 +222,20 @@ async def _run_pipeline(
 
 
 # ---------------------------------------------------------------------------
-# Celery task
+# Background task (runs inside FastAPI's event loop via BackgroundTasks)
 # ---------------------------------------------------------------------------
 
-@celery_app.task(name="analysis.run", bind=True)
-def run_analysis_task(self, analysis_id: int):
+async def run_analysis_background(analysis_id: int) -> None:
+    """
+    Async background task — called by FastAPI BackgroundTasks after the
+    POST /analysis/ response has been sent to the client.
+    No separate worker process needed.
+    """
     from app.core.database import SessionLocal
     from app.models.analysis import Analysis
     from app.models.profile import UserProfile
 
-    logger.info("Starting analysis task for analysis_id=%d", analysis_id)
+    logger.info("Starting background analysis for analysis_id=%d", analysis_id)
 
     db = SessionLocal()
     try:
@@ -242,41 +244,38 @@ def run_analysis_task(self, analysis_id: int):
             logger.error("Analysis %d not found", analysis_id)
             return
 
-        # Mark as processing
         analysis.status = 'processing'
         db.commit()
 
-        # Load user preferences
         user_profile = db.query(UserProfile).filter(
             UserProfile.user_id == analysis.user_id
         ).first()
 
         user_preferences = {
-            'work_hours':        (user_profile.work_hours   if user_profile else None) or '9:00 - 17:00',
-            'work_address':       user_profile.work_address  if user_profile else None,
-            'sleep_hours':       (user_profile.sleep_hours  if user_profile else None) or '23:00 - 07:00',
-            'noise_preference':  (user_profile.noise_preference if user_profile else None) or 'moderate',
+            'work_hours':        (user_profile.work_hours        if user_profile else None) or '9:00 - 17:00',
+            'work_address':       user_profile.work_address       if user_profile else None,
+            'sleep_hours':       (user_profile.sleep_hours       if user_profile else None) or '23:00 - 07:00',
+            'noise_preference':  (user_profile.noise_preference  if user_profile else None) or 'moderate',
             'hobbies':            user_profile.hobbies if user_profile and user_profile.hobbies else [],
             'commute_preference':(user_profile.commute_preference if user_profile else None) or 'driving',
         }
 
-        current_lat  = float(analysis.current_lat)
-        current_lng  = float(analysis.current_lng)
-        dest_lat     = float(analysis.destination_lat)
-        dest_lng     = float(analysis.destination_lng)
+        current_lat = float(analysis.current_lat)
+        current_lng = float(analysis.current_lng)
+        dest_lat    = float(analysis.destination_lat)
+        dest_lng    = float(analysis.destination_lng)
+        user_id     = analysis.user_id
 
-        # Close DB session before the long async run to avoid connection stale
+        # Release DB connection before the long async pipeline
         db.close()
         db = None
 
-        # Run the full pipeline
-        result = asyncio.run(_run_pipeline(
+        result = await _run_pipeline(
             current_lat, current_lng, analysis.current_address,
             dest_lat, dest_lng, analysis.destination_address,
             user_preferences,
-        ))
+        )
 
-        # Persist results
         db = SessionLocal()
         analysis = db.query(Analysis).filter(Analysis.id == analysis_id).first()
         for field, value in result.items():
@@ -285,12 +284,12 @@ def run_analysis_task(self, analysis_id: int):
         db.commit()
         logger.info("Analysis %d completed (score=%.1f)", analysis_id, result.get('overall_weighted_score', 0))
 
-        # Notify the SSE stream so the browser updates immediately
+        # Notify the SSE stream
         try:
             from app.core.redis_cache import _redis
             r = _redis()
             if r:
-                r.publish(f"analysis:done:{analysis.user_id}", str(analysis_id))
+                r.publish(f"analysis:done:{user_id}", str(analysis_id))
         except Exception as pub_err:
             logger.warning("Could not publish SSE event: %s", pub_err)
 

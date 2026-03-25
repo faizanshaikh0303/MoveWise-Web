@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.user import User
@@ -17,6 +17,7 @@ router = APIRouter(prefix="/analysis", tags=["analysis"])
 @router.post("/", response_model=AnalysisResponse)
 async def create_analysis(
     request: AnalysisRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -52,9 +53,8 @@ async def create_analysis(
         db.commit()
         db.refresh(new_analysis)
 
-        # Dispatch Celery task — runs in background worker
-        from app.tasks.analysis_tasks import run_analysis_task
-        run_analysis_task.delay(new_analysis.id)
+        from app.tasks.analysis_tasks import run_analysis_background
+        background_tasks.add_task(run_analysis_background, new_analysis.id)
 
         print(f"Analysis {new_analysis.id} queued for user {current_user.id}")
         return new_analysis

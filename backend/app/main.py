@@ -16,6 +16,11 @@ with engine.connect() as _conn:
     _conn.execute(text(
         "ALTER TABLE analyses ADD COLUMN IF NOT EXISTS error_message TEXT"
     ))
+    # Any analysis left 'processing' means the service was restarted mid-run — mark as failed
+    _conn.execute(text(
+        "UPDATE analyses SET status='failed', error_message='Service restarted during processing' "
+        "WHERE status='processing'"
+    ))
     _conn.commit()
 
 # Initialize FastAPI app

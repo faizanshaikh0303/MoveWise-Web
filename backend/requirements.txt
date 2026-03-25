@@ -46,5 +46,4 @@ watchfiles==1.1.1
 websockets==16.0
 geopy==2.4.1
 requests==2.31.0
-celery==5.3.6
 redis==5.0.3
