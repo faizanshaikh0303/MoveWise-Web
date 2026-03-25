@@ -9,7 +9,7 @@ import DashboardChat from '../components/DashboardChat';
 const Dashboard = () => {
   const navigate = useNavigate();
   const { logout, user } = useAuthStore();
-  const { analyses, fetched, fetchAnalyses } = useAnalysisStore();
+  const { analyses, fetched, fetchAnalyses, markCompleted } = useAnalysisStore();
   const [loading, setLoading] = useState(!fetched);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
@@ -25,9 +25,9 @@ const Dashboard = () => {
       withCredentials: true, // send the httpOnly access_token cookie
     });
 
-    es.onmessage = () => {
-      // Re-fetch the list so the completed card appears immediately
-      fetchAnalyses();
+    es.onmessage = (event) => {
+      const analysisId = parseInt(event.data, 10);
+      if (!isNaN(analysisId)) markCompleted(analysisId);
     };
 
     es.onerror = () => {
