@@ -31,6 +31,18 @@ interface MarkerType {
   color: string;
 }
 
+const CIRCLE_RADIUS_M = 1609; // 1 mile
+
+function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 const AmenitiesTab = ({ data, lifestyleScore }: { data: any; lifestyleScore?: number }) => {
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
@@ -69,23 +81,25 @@ const AmenitiesTab = ({ data, lifestyleScore }: { data: any; lifestyleScore?: nu
     'airports':       { icon: Plane,      color: '#6366f1', markerColor: '#6366f1' },
   };
 
-  // Get all markers for the map - with proper typing
+  // Get all markers within the circle radius
   const allMarkers: MarkerType[] = [];
   Object.entries(destinationLocations).forEach(([category, places]) => {
     if (!places || !Array.isArray(places)) return;
-    
+
     places.forEach((place: any, idx: number) => {
-      if (selectedCategory === 'all' || selectedCategory === category) {
-        allMarkers.push({
-          id: `${category}-${idx}`,
-          category,
-          name: place.name,
-          address: place.address,
-          lat: place.lat,
-          lng: place.lng,
-          color: categoryIcons[category]?.markerColor || '#gray'
-        });
-      }
+      if (selectedCategory !== 'all' && selectedCategory !== category) return;
+      if (!place.lat || !place.lng) return;
+      if (distanceMeters(destinationLat, destinationLng, place.lat, place.lng) > CIRCLE_RADIUS_M) return;
+
+      allMarkers.push({
+        id: `${category}-${idx}`,
+        category,
+        name: place.name,
+        address: place.address,
+        lat: place.lat,
+        lng: place.lng,
+        color: categoryIcons[category]?.markerColor || '#gray'
+      });
     });
   });
 
