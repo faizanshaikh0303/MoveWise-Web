@@ -29,12 +29,10 @@ def chat(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Fetch the same top 10 analyses the dashboard shows
     analyses = (
         db.query(Analysis)
         .filter(Analysis.user_id == current_user.id)
         .order_by(Analysis.created_at.desc())
-        .limit(10)
         .all()
     )
 

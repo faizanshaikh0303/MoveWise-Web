@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from typing import Optional
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import verify_password, get_password_hash, create_access_token, decode_access_token
+from app.core.limiter import limiter
 from app.models.user import User
 from app.schemas.user import UserCreate, UserLogin, UserResponse, Token, PasswordChange
 from app.core.config import settings
@@ -27,7 +28,8 @@ def _set_auth_cookie(response: Response, token: str) -> None:
 
 
 @router.post("/register", response_model=Token)
-def register(response: Response, user_data: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def register(request: Request, response: Response, user_data: UserCreate, db: Session = Depends(get_db)):
     """Register a new user"""
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
@@ -48,7 +50,8 @@ def register(response: Response, user_data: UserCreate, db: Session = Depends(ge
 
 
 @router.post("/login", response_model=Token)
-def login(response: Response, credentials: UserLogin, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, response: Response, credentials: UserLogin, db: Session = Depends(get_db)):
     """Login user"""
     user = db.query(User).filter(User.email == credentials.email).first()
     if not user or not verify_password(credentials.password, user.hashed_password):

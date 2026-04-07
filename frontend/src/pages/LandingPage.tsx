@@ -156,7 +156,7 @@ const LandingPage = () => {
             {/* Sign In Button */}
             <button
               onClick={() => navigate('/login')}
-              className="px-6 py-2.5 bg-gradient-to-r from-primary to-blue-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
+              className="px-6 py-2.5 bg-gradient-to-r from-violet-500 to-blue-500 text-white rounded-lg font-semibold hover:from-violet-600 hover:to-blue-600 transition-all duration-200"
             >
               Sign In
             </button>
@@ -218,13 +218,13 @@ const LandingPage = () => {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button
                 onClick={() => navigate('/login')}
-                className="px-8 py-4 bg-gradient-to-r from-primary to-blue-600 text-white rounded-xl font-semibold text-lg shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
+                className="px-8 py-4 bg-gradient-to-r from-violet-500 to-blue-500 text-white rounded-lg font-semibold text-lg hover:from-violet-600 hover:to-blue-600 transition-all duration-200 shadow-lg shadow-violet-200"
               >
                 Start Your Analysis
               </button>
               <button
                 onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
-                className="px-8 py-4 bg-white text-gray-900 rounded-xl font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 border-2 border-gray-200"
+                className="px-8 py-4 bg-transparent text-violet-600 rounded-lg font-semibold text-lg border border-violet-400 hover:bg-violet-50 transition-colors duration-200"
               >
                 See How It Works
               </button>
@@ -371,7 +371,7 @@ const LandingPage = () => {
           </p>
           <button
             onClick={() => navigate('/login')}
-            className="px-10 py-5 bg-gradient-to-r from-primary to-blue-600 text-white rounded-xl font-semibold text-xl shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
+            className="px-10 py-4 bg-gradient-to-r from-violet-500 to-blue-500 text-white rounded-lg font-semibold text-xl hover:from-violet-600 hover:to-blue-600 transition-all duration-200 shadow-lg shadow-violet-200"
           >
             Get Started for Free
           </button>

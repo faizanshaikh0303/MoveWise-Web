@@ -1,6 +1,7 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.limiter import limiter
 from app.models.user import User
 from app.models.analysis import Analysis
 from app.schemas.analysis import AnalysisRequest, AnalysisResponse, AnalysisList
@@ -12,8 +13,12 @@ import json
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
 
+ANALYSIS_LIMIT = 20
+
 @router.post("/", response_model=AnalysisResponse)
+@limiter.limit("10/hour")
 def create_analysis(
+    http_request: Request,
     request: AnalysisRequest,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
@@ -23,6 +28,13 @@ def create_analysis(
     Create a pending Analysis record and immediately return.
     Geocoding + all API calls happen in the background task.
     """
+    analysis_count = db.query(Analysis).filter(Analysis.user_id == current_user.id).count()
+    if analysis_count >= ANALYSIS_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Analysis limit of {ANALYSIS_LIMIT} reached. Delete an existing analysis to create a new one."
+        )
+
     try:
         new_analysis = Analysis(
             user_id=current_user.id,
@@ -52,14 +64,13 @@ def create_analysis(
 def get_user_analyses(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    limit: int = 10
 ):
     """Get all analyses for current user"""
-    
+
     print(f"[DB] GET analyses for user {current_user.id}")
     analyses = db.query(Analysis).filter(
         Analysis.user_id == current_user.id
-    ).order_by(Analysis.created_at.desc()).limit(limit).all()
+    ).order_by(Analysis.created_at.desc()).all()
     
     return analyses
 
