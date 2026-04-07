@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # "development" | "production" — controls cookie security flags
     ENVIRONMENT: str = "development"
 
+    # Per-account analysis cap
+    ANALYSIS_LIMIT: int = 20
+
     # Embeddings (for RAG knowledge base)
     COHERE_API_KEY: Optional[str] = None
 

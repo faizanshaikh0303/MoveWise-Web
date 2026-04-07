@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore.ts';
 import { useAnalysisStore } from '../stores/analysisStore';
 import { authAPI } from '../services/api';
-import { BarChart3, CalendarDays, MapPin, Plus, ChevronRight, ArrowDown } from 'lucide-react';
+import { BarChart3, CalendarDays, MapPin, Plus, ChevronRight, ArrowDown, AlertCircle } from 'lucide-react';
+
+const ANALYSIS_LIMIT = Number(import.meta.env.VITE_ANALYSIS_LIMIT) || 20;
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -48,6 +50,7 @@ const Dashboard = () => {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
+  const atLimit = analyses.length >= ANALYSIS_LIMIT;
   const uniqueDestinations = new Set(analyses.map(a => a.destination_address)).size;
 
   const handleLogout = async () => {
@@ -149,13 +152,28 @@ const Dashboard = () => {
               <p className="text-lg text-gray-600">Compare locations and make informed decisions</p>
             </div>
             <button
-              onClick={() => navigate('/new-analysis')}
-              className="group px-6 py-3 bg-gradient-to-r from-primary to-blue-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
+              onClick={() => !atLimit && navigate('/new-analysis')}
+              disabled={atLimit}
+              className={`group px-6 py-3 rounded-xl font-semibold flex items-center gap-2 transition-all duration-200 ${
+                atLimit
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-primary to-blue-600 text-white shadow-lg hover:shadow-xl transform hover:scale-105'
+              }`}
             >
               <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform duration-200" />
               New Analysis
             </button>
           </div>
+
+          {/* Limit reached banner */}
+          {!loading && atLimit && (
+            <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 mb-6">
+              <AlertCircle className="w-5 h-5 flex-shrink-0 text-amber-500" />
+              <p className="text-sm font-medium">
+                You've reached the {ANALYSIS_LIMIT}-analysis limit. Delete an existing analysis to create a new one.
+              </p>
+            </div>
+          )}
 
           {/* Stats Strip */}
           {!loading && analyses.length > 0 && (

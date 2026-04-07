@@ -1,6 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.limiter import limiter
 from app.models.user import User
 from app.models.analysis import Analysis
@@ -12,8 +13,6 @@ import json
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
-
-ANALYSIS_LIMIT = 20
 
 @router.post("/", response_model=AnalysisResponse)
 @limiter.limit("10/hour")
@@ -29,10 +28,10 @@ def create_analysis(
     Geocoding + all API calls happen in the background task.
     """
     analysis_count = db.query(Analysis).filter(Analysis.user_id == current_user.id).count()
-    if analysis_count >= ANALYSIS_LIMIT:
+    if analysis_count >= settings.ANALYSIS_LIMIT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Analysis limit of {ANALYSIS_LIMIT} reached. Delete an existing analysis to create a new one."
+            detail=f"Analysis limit of {settings.ANALYSIS_LIMIT} reached. Delete an existing analysis to create a new one."
         )
 
     try:
