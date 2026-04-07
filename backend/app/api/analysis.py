@@ -31,7 +31,7 @@ def create_analysis(
     if analysis_count >= settings.ANALYSIS_LIMIT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Analysis limit of {settings.ANALYSIS_LIMIT} reached. Delete an existing analysis to create a new one."
+            detail=f"Analysis limit of {settings.ANALYSIS_LIMIT} reached for this account."
         )
 
     try:

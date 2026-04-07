@@ -170,7 +170,7 @@ const Dashboard = () => {
             <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 mb-6">
               <AlertCircle className="w-5 h-5 flex-shrink-0 text-amber-500" />
               <p className="text-sm font-medium">
-                You've reached the {ANALYSIS_LIMIT}-analysis limit. Delete an existing analysis to create a new one.
+                You've reached the {ANALYSIS_LIMIT}-analysis limit for your account. No new analyses can be created.
               </p>
             </div>
           )}
@@ -183,7 +183,7 @@ const Dashboard = () => {
                   <BarChart3 className="w-5 h-5 text-blue-500" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-gray-900 leading-none">{analyses.length}</p>
+                  <p className="text-2xl font-bold text-gray-900 leading-none">{analyses.length}<span className="text-sm font-normal text-gray-400">/{ANALYSIS_LIMIT}</span></p>
                   <p className="text-xs text-gray-500 mt-1">Analyses run</p>
                 </div>
               </div>
