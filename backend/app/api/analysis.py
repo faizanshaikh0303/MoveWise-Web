@@ -5,7 +5,7 @@ from app.core.config import settings
 from app.core.limiter import limiter
 from app.models.user import User
 from app.models.analysis import Analysis
-from app.schemas.analysis import AnalysisRequest, AnalysisResponse, AnalysisList
+from app.schemas.analysis import AnalysisRequest as AnalysisBody, AnalysisResponse, AnalysisList
 from app.api.auth import get_current_user
 
 from typing import List
@@ -17,8 +17,8 @@ router = APIRouter(prefix="/analysis", tags=["analysis"])
 @router.post("/", response_model=AnalysisResponse)
 @limiter.limit("10/hour")
 def create_analysis(
-    http_request: Request,
-    request: AnalysisRequest,
+    request: Request,
+    body: AnalysisBody,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -37,8 +37,8 @@ def create_analysis(
     try:
         new_analysis = Analysis(
             user_id=current_user.id,
-            current_address=request.current_address,
-            destination_address=request.destination_address,
+            current_address=body.current_address,
+            destination_address=body.destination_address,
             status='pending',
         )
         db.add(new_analysis)
