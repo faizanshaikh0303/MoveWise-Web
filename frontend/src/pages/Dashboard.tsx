@@ -20,10 +20,10 @@ const Dashboard = () => {
     }
   }, []);
 
-  // SSE: listen for analysis completion events pushed by the backend
+  // SSE: instant updates when Redis is available
   useEffect(() => {
     const es = new EventSource(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/stream`, {
-      withCredentials: true, // send the httpOnly access_token cookie
+      withCredentials: true,
     });
 
     es.onmessage = (event) => {
@@ -32,11 +32,25 @@ const Dashboard = () => {
     };
 
     es.onerror = () => {
-      // Connection dropped (backend restart, network blip) — browser auto-reconnects
+      // Connection dropped — browser auto-reconnects
     };
 
     return () => es.close();
   }, []);
+
+  // Polling fallback: re-fetch every 5 s while any analysis is still in-progress
+  useEffect(() => {
+    const hasPending = analyses.some(
+      (a) => a.status === 'pending' || a.status === 'processing'
+    );
+    if (!hasPending) return;
+
+    const interval = setInterval(() => {
+      fetchAnalyses();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [analyses]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
