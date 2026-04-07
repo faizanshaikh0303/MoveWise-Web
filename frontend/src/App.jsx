@@ -63,7 +63,7 @@ function App() {
           <Route
             path="/new-analysis"
             element={
-              <ProtectedRoute requiresProfile>
+              <ProtectedRoute requiresProfile requiresAnalysisSlot>
                 <LocationInput />
               </ProtectedRoute>
             }
