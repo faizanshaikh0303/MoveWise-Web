@@ -271,13 +271,21 @@ class CrimeService:
             from_str, to_str = self._year_window(year)
             params: Dict[str, Any] = {'from': from_str, 'to': to_str, 'API_KEY': self.api_key}
             try:
-                async with httpx.AsyncClient(timeout=15.0) as client:
-                    v_resp, p_resp, l_resp, d_resp = await asyncio.gather(
-                        client.get(f"{self.fbi_api_base}/summarized/agency/{ori}/V",   params=params),
-                        client.get(f"{self.fbi_api_base}/summarized/agency/{ori}/P",   params=params),
-                        client.get(f"{self.fbi_api_base}/summarized/agency/{ori}/LAR", params=params),
-                        client.get(f"{self.fbi_api_base}/summarized/agency/{ori}/BUR", params=params),
-                    )
+                v_resp = p_resp = l_resp = d_resp = None
+                for attempt in range(3):
+                    if attempt > 0:
+                        wait = attempt * 2
+                        print(f"   FBI agency {name} {year}: 503 retry {attempt}/2 (wait {wait}s)")
+                        await asyncio.sleep(wait)
+                    async with httpx.AsyncClient(timeout=15.0) as client:
+                        v_resp, p_resp, l_resp, d_resp = await asyncio.gather(
+                            client.get(f"{self.fbi_api_base}/summarized/agency/{ori}/V",   params=params),
+                            client.get(f"{self.fbi_api_base}/summarized/agency/{ori}/P",   params=params),
+                            client.get(f"{self.fbi_api_base}/summarized/agency/{ori}/LAR", params=params),
+                            client.get(f"{self.fbi_api_base}/summarized/agency/{ori}/BUR", params=params),
+                        )
+                    if v_resp.status_code != 503 or p_resp.status_code != 503:
+                        break
 
                 print(f"   FBI agency {name} {year}: V={v_resp.status_code} P={p_resp.status_code} LAR={l_resp.status_code} BUR={d_resp.status_code}")
 
