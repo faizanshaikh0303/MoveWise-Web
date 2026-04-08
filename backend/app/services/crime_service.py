@@ -193,18 +193,23 @@ class CrimeService:
         monthly_dict shape: {"02-2024": 3.16, "03-2024": 1.58, "04-2024": 7.89}
         """
         if not data or not isinstance(data, dict):
+            print(f"   [extract] {agency_name}: data missing or not a dict ({type(data)})")
             return None, {}
         rates_dict = data.get('offenses', {}).get('rates', {})
         agency_key = f"{agency_name} Offenses"
+        available_keys = list(rates_dict.keys())
         monthly_raw = rates_dict.get(agency_key)
         if not monthly_raw or not isinstance(monthly_raw, dict):
+            print(f"   [extract] {agency_name}: key '{agency_key}' not found. Available: {available_keys}")
             return None, {}
         monthly = {k: v for k, v in monthly_raw.items()
                    if v is not None and isinstance(v, (int, float)) and v > 0}
         if not monthly:
+            print(f"   [extract] {agency_name}: monthly_raw has no valid numeric values: {monthly_raw}")
             return None, {}
         values = list(monthly.values())
         annualized = round(sum(values) * (12 / len(values)), 1)
+        print(f"   [extract] {agency_name}: annualized={annualized:.1f}/100k from {len(values)} months")
         return annualized, monthly
 
     async def _fetch_agency_list(self, state: str) -> Optional[List[dict]]:
@@ -274,16 +279,21 @@ class CrimeService:
                         client.get(f"{self.fbi_api_base}/summarized/agency/{ori}/BUR", params=params),
                     )
 
-                def _rate_monthly(resp) -> tuple:
-                    return self._extract_agency_rate(resp.json(), name) if resp.status_code == 200 else (None, {})
+                print(f"   FBI agency {name} {year}: V={v_resp.status_code} P={p_resp.status_code} LAR={l_resp.status_code} BUR={d_resp.status_code}")
 
-                v_rate, v_monthly = _rate_monthly(v_resp)
-                p_rate, p_monthly = _rate_monthly(p_resp)
-                l_rate, l_monthly = _rate_monthly(l_resp)
-                d_rate, d_monthly = _rate_monthly(d_resp)
+                def _rate_monthly(resp, label: str) -> tuple:
+                    if resp.status_code != 200:
+                        print(f"   [agency] {name} {label}: HTTP {resp.status_code} — {resp.text[:200]}")
+                        return None, {}
+                    return self._extract_agency_rate(resp.json(), name)
+
+                v_rate, v_monthly = _rate_monthly(v_resp, 'V')
+                p_rate, p_monthly = _rate_monthly(p_resp, 'P')
+                l_rate, l_monthly = _rate_monthly(l_resp, 'LAR')
+                d_rate, d_monthly = _rate_monthly(d_resp, 'BUR')
 
                 if v_rate is None and p_rate is None:
-                    print(f"   WARNING FBI agency {name} {year}: no usable rates, trying year-3")
+                    print(f"   WARNING FBI agency {name} {year}: no usable rates (V={v_rate}, P={p_rate}), trying year-3")
                     continue
 
                 v     = v_rate or 0.0
