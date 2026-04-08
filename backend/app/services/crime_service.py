@@ -247,12 +247,6 @@ class CrimeService:
         """
         from app.core.redis_cache import cache_get, cache_set, CACHE_7_DAYS
 
-        coord_cache_key = f"fbi:agency_rate:{state.upper()}:{round(lat, 3)}:{round(lng, 3)}"
-        cached = cache_get(coord_cache_key)
-        if cached:
-            print(f"   CACHE HIT agency rate {state} ({lat:.3f},{lng:.3f})")
-            return cached
-
         agencies = await self._fetch_agency_list(state)
         if not agencies:
             return None
@@ -265,6 +259,13 @@ class CrimeService:
         ori  = agency['ori']
         name = agency['agency_name']
         print(f"   FBI agency selected: {name} (ORI={ori})")
+
+        # Cache by ORI so all analyses near the same agency share one fetch
+        ori_cache_key = f"fbi:agency_rate:{ori}"
+        cached = cache_get(ori_cache_key)
+        if cached:
+            print(f"   CACHE HIT agency rate {name} (ORI={ori})")
+            return cached
 
         cy = datetime.now().year
         for year in [cy - 2, cy - 3]:
@@ -314,7 +315,7 @@ class CrimeService:
                         'burglary': d_monthly,
                     },
                 }
-                cache_set(coord_cache_key, result, ttl=CACHE_7_DAYS)
+                cache_set(ori_cache_key, result, ttl=CACHE_7_DAYS)
                 print(f"   OK FBI agency {name} {year} ({from_str}→{to_str}): {v:.0f}+{p:.0f}={total:.0f}/100k")
                 return result
 
