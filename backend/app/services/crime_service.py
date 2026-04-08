@@ -1,8 +1,9 @@
 import re
+import math
 import asyncio
 import httpx
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 # Fixed hourly crime weight distribution (index = hour 0-23)
 # Based on FBI UCR patterns: higher weight = more crime
@@ -92,6 +93,74 @@ class CrimeService:
                 return code
         return None
 
+    @staticmethod
+    def _year_window(year: int) -> tuple:
+        """
+        Return (from_str, to_str) for a 3-month window within a specific year,
+        ending at the same month as today (mirrors current calendar position).
+        e.g. April 2026, year=2024 → from='02-2024', to='04-2024'
+        """
+        cm = datetime.now().month
+        from_month = max(1, cm - 2)   # 3 months inclusive: cm-2, cm-1, cm
+        return f"{from_month:02d}-{year}", f"{cm:02d}-{year}"
+
+    @staticmethod
+    def _flatten_agency_list(raw: Any) -> List[dict]:
+        """Flatten {"COUNTY": [...agencies...]} county-keyed response into a flat list."""
+        if isinstance(raw, list):
+            return raw
+        if isinstance(raw, dict):
+            result = []
+            for agencies in raw.values():
+                if isinstance(agencies, list):
+                    result.extend(agencies)
+            return result
+        return []
+
+    def _nearest_agency(self, agencies: List[dict], lat: float, lng: float) -> Optional[dict]:
+        """
+        Find the closest NIBRS-reporting agency to (lat, lng) using Haversine distance.
+        Within 10km, prefers City type over County. Beyond 10km, returns absolute nearest.
+        Skips agencies with no coordinates or is_nibrs=False.
+        """
+        def _haversine(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+            R = 6_371_000
+            d_lat = (lat2 - lat1) * math.pi / 180
+            d_lng = (lng2 - lng1) * math.pi / 180
+            a = (math.sin(d_lat / 2) ** 2 +
+                 math.cos(lat1 * math.pi / 180) * math.cos(lat2 * math.pi / 180) *
+                 math.sin(d_lng / 2) ** 2)
+            return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+        def _type_score(a: dict) -> int:
+            t = a.get('agency_type_name', '')
+            if t == 'City':   return 2
+            if t == 'County': return 1
+            return 0
+
+        candidates = []
+        for a in agencies:
+            if not a.get('is_nibrs'):
+                continue
+            a_lat = a.get('latitude')
+            a_lng = a.get('longitude')
+            if a_lat is None or a_lng is None:
+                continue
+            dist = _haversine(lat, lng, a_lat, a_lng)
+            candidates.append((dist, a))
+
+        if not candidates:
+            return None
+
+        nearby = [(d, a) for d, a in candidates if d <= 10_000]
+        if nearby:
+            # within 10km: prefer City > County, then closest
+            nearby.sort(key=lambda x: (-_type_score(x[1]), x[0]))
+            return nearby[0][1]
+
+        candidates.sort(key=lambda x: x[0])
+        return candidates[0][1]
+
     # ── FBI API ────────────────────────────────────────────────────────────────
 
     def _extract_rate(self, data: Any) -> Optional[float]:
@@ -116,6 +185,138 @@ class CrimeService:
 
         return None
 
+    def _extract_agency_rate(self, data: Any, agency_name: str) -> tuple:
+        """
+        Extract annualized rate per 100k + raw monthly dict from offenses.rates.
+        Monthly rates (already per 100k) are summed and annualized: sum * (12 / n).
+        Returns (annualized_rate, monthly_dict) or (None, {}) if no usable data.
+        monthly_dict shape: {"02-2024": 3.16, "03-2024": 1.58, "04-2024": 7.89}
+        """
+        if not data or not isinstance(data, dict):
+            return None, {}
+        rates_dict = data.get('offenses', {}).get('rates', {})
+        agency_key = f"{agency_name} Offenses"
+        monthly_raw = rates_dict.get(agency_key)
+        if not monthly_raw or not isinstance(monthly_raw, dict):
+            return None, {}
+        monthly = {k: v for k, v in monthly_raw.items()
+                   if v is not None and isinstance(v, (int, float)) and v > 0}
+        if not monthly:
+            return None, {}
+        values = list(monthly.values())
+        annualized = round(sum(values) * (12 / len(values)), 1)
+        return annualized, monthly
+
+    async def _fetch_agency_list(self, state: str) -> Optional[List[dict]]:
+        """Fetch and cache all FBI reporting agencies for a state as a flat list."""
+        from app.core.redis_cache import cache_get, cache_set, CACHE_7_DAYS
+
+        cache_key = f"fbi:agency:{state.upper()}"
+        cached = cache_get(cache_key)
+        if cached:
+            return cached
+        if not self.api_key:
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(
+                    f"{self.fbi_api_base}/agency/byStateAbbr/{state.upper()}",
+                    params={'API_KEY': self.api_key}
+                )
+            if resp.status_code != 200:
+                print(f"   WARNING FBI agency list {state}: HTTP {resp.status_code}")
+                return None
+            agencies = self._flatten_agency_list(resp.json())
+            if agencies:
+                cache_set(cache_key, agencies, ttl=CACHE_7_DAYS)
+                print(f"   FBI agency list {state}: {len(agencies)} agencies cached")
+            return agencies or None
+        except Exception as e:
+            print(f"   WARNING FBI agency list error ({state}): {e}")
+            return None
+
+    async def _fetch_agency_rate(self, state: str, lat: float, lng: float) -> Optional[Dict[str, Any]]:
+        """
+        Find the nearest NIBRS agency to (lat, lng) and return its annualized crime rates.
+        Queries V, P, LAR, BUR offense categories. Returns None on any failure → caller falls back to state.
+        """
+        from app.core.redis_cache import cache_get, cache_set, CACHE_7_DAYS
+
+        coord_cache_key = f"fbi:agency_rate:{state.upper()}:{round(lat, 3)}:{round(lng, 3)}"
+        cached = cache_get(coord_cache_key)
+        if cached:
+            print(f"   CACHE HIT agency rate {state} ({lat:.3f},{lng:.3f})")
+            return cached
+
+        agencies = await self._fetch_agency_list(state)
+        if not agencies:
+            return None
+
+        agency = self._nearest_agency(agencies, lat, lng)
+        if not agency:
+            print(f"   FBI agency: no nearby NIBRS agency for ({lat:.3f},{lng:.3f})")
+            return None
+
+        ori  = agency['ori']
+        name = agency['agency_name']
+        print(f"   FBI agency selected: {name} (ORI={ori})")
+
+        cy = datetime.now().year
+        for year in [cy - 2, cy - 3]:
+            from_str, to_str = self._year_window(year)
+            params: Dict[str, Any] = {'from': from_str, 'to': to_str, 'API_KEY': self.api_key}
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    v_resp, p_resp, l_resp, d_resp = await asyncio.gather(
+                        client.get(f"{self.fbi_api_base}/summarized/agency/{ori}/V",   params=params),
+                        client.get(f"{self.fbi_api_base}/summarized/agency/{ori}/P",   params=params),
+                        client.get(f"{self.fbi_api_base}/summarized/agency/{ori}/LAR", params=params),
+                        client.get(f"{self.fbi_api_base}/summarized/agency/{ori}/BUR", params=params),
+                    )
+
+                def _rate_monthly(resp) -> tuple:
+                    return self._extract_agency_rate(resp.json(), name) if resp.status_code == 200 else (None, {})
+
+                v_rate, v_monthly = _rate_monthly(v_resp)
+                p_rate, p_monthly = _rate_monthly(p_resp)
+                l_rate, l_monthly = _rate_monthly(l_resp)
+                d_rate, d_monthly = _rate_monthly(d_resp)
+
+                if v_rate is None and p_rate is None:
+                    print(f"   WARNING FBI agency {name} {year}: no usable rates, trying year-3")
+                    continue
+
+                v     = v_rate or 0.0
+                p     = p_rate or round(v * 3.5, 1)
+                total = round(v + p, 1)
+                if total <= 0:
+                    continue
+
+                result = {
+                    'total':    total,
+                    'violent':  v,
+                    'property': p,
+                    'larceny':  l_rate,
+                    'burglary': d_rate,
+                    'source':   f'FBI CDE Agency ({name}, {from_str}–{to_str})',
+                    'monthly': {
+                        'violent':  v_monthly,
+                        'property': p_monthly,
+                        'larceny':  l_monthly,
+                        'burglary': d_monthly,
+                    },
+                }
+                cache_set(coord_cache_key, result, ttl=CACHE_7_DAYS)
+                print(f"   OK FBI agency {name} {year} ({from_str}→{to_str}): {v:.0f}+{p:.0f}={total:.0f}/100k")
+                return result
+
+            except Exception as e:
+                print(f"   WARNING FBI agency error ({ori} {year}): {e}")
+                continue
+
+        print(f"   FBI agency {name}: no data for year-2 or year-3, falling back to state")
+        return None
+
     async def _fetch_fbi_rates(self, address: str) -> Optional[Dict[str, Any]]:
         """
         Fetch crime rates per 100k from the FBI CDE API for all categories.
@@ -126,9 +327,10 @@ class CrimeService:
             print(f"   WARNING FBI API: could not extract state from '{address}'")
             return None
 
-        current_year = datetime.now().year
-        for year in [current_year - 1, current_year - 2, current_year - 3]:
-            params: Dict[str, Any] = {'from': f'01-{year}', 'to': f'12-{year}'}
+        cy = datetime.now().year
+        for year in [cy - 2, cy - 3]:
+            from_str, to_str = self._year_window(year)
+            params: Dict[str, Any] = {'from': from_str, 'to': to_str}
             if self.api_key:
                 params['api_key'] = self.api_key
 
@@ -141,15 +343,12 @@ class CrimeService:
                         client.get(f"{self.fbi_api_base}/summarized/state/{state}/burglary", params=params),
                     )
 
-                print(f"   FBI API {state} {year}: V={v_resp.status_code} P={p_resp.status_code} L={l_resp.status_code} D={d_resp.status_code}")
+                print(f"   FBI API {state} {year} ({from_str}→{to_str}): V={v_resp.status_code} P={p_resp.status_code}")
 
                 v_data = v_resp.json() if v_resp.status_code == 200 else None
                 p_data = p_resp.json() if p_resp.status_code == 200 else None
                 l_data = l_resp.json() if l_resp.status_code == 200 else None
                 d_data = d_resp.json() if d_resp.status_code == 200 else None
-
-                print(f"   FBI raw violent[:120]: {str(v_data)[:120]}")
-                print(f"   FBI raw property[:120]: {str(p_data)[:120]}")
 
                 violent_rate  = self._extract_rate(v_data)
                 property_rate = self._extract_rate(p_data)
@@ -157,7 +356,7 @@ class CrimeService:
                 burglary_rate = self._extract_rate(d_data)
 
                 if violent_rate is None and property_rate is None:
-                    print(f"   WARNING FBI API: unrecognised response format for {state} {year}")
+                    print(f"   WARNING FBI API: no data for {state} {year}, trying year-3")
                     continue
 
                 v = violent_rate or 0.0
@@ -168,14 +367,15 @@ class CrimeService:
                     cats = []
                     if larceny_rate:  cats.append(f"larceny={larceny_rate:.0f}")
                     if burglary_rate: cats.append(f"burglary={burglary_rate:.0f}")
-                    print(f"   OK FBI API {state} {year}: {v:.0f} violent + {p:.0f} property = {total:.0f}/100k ({', '.join(cats) or 'no category data'})")
+                    print(f"   OK FBI API {state} {year}: {v:.0f}+{p:.0f}={total:.0f}/100k ({', '.join(cats) or 'no category data'})")
                     return {
                         'total':    total,
                         'violent':  v,
                         'property': p,
                         'larceny':  larceny_rate,
                         'burglary': burglary_rate,
-                        'source':   f'FBI Crime Data Explorer ({year})',
+                        'source':   f'FBI Crime Data Explorer ({from_str}–{to_str})',
+                        'monthly':  {},   # state endpoint doesn't return per-agency monthly breakdown
                     }
 
             except Exception as e:
@@ -197,13 +397,21 @@ class CrimeService:
 
     # ── Core metrics ───────────────────────────────────────────────────────────
 
-    async def _get_rates(self, address: str) -> Dict[str, Any]:
-        """Return a dict with total rate, source, and per-category rates. Tries FBI API first."""
+    async def _get_rates(self, address: str, lat: Optional[float] = None, lng: Optional[float] = None) -> Dict[str, Any]:
+        """Return a dict with total rate, source, and per-category rates.
+        Priority: agency-level (if coords + API key) → state-level → static fallback."""
         from app.core.redis_cache import cache_get, cache_set, CACHE_7_DAYS
 
         state = self._state_from_address(address)
 
-        # Cache check — state-level data is valid for 7 days
+        # ── 1. Agency-level rate (most accurate) ──────────────────────────────
+        if state and lat is not None and lng is not None and self.api_key:
+            agency_result = await self._fetch_agency_rate(state, lat, lng)
+            if agency_result:
+                return agency_result
+            print(f"   FBI agency fallback → state-level for ({lat:.3f},{lng:.3f})")
+
+        # ── 2. State-level rate ────────────────────────────────────────────────
         if state:
             cached = cache_get(self._cache_key(state))
             if cached:
@@ -217,6 +425,7 @@ class CrimeService:
                 print(f"   CACHE SET FBI {state} (7 days)")
             return result
 
+        # ── 3. Static fallback ─────────────────────────────────────────────────
         rate = self._static_rate(address)
         return {
             'total':    rate,
@@ -225,6 +434,7 @@ class CrimeService:
             'larceny':  None,
             'burglary': None,
             'source':   'FBI UCR 2022 (City Averages)',
+            'monthly':  {},
         }
 
     def _rate_to_safety_score(self, rate: float) -> float:
@@ -305,6 +515,7 @@ class CrimeService:
             'safety_score':    self._rate_to_safety_score(rate),
             'data_source':     source,
             'categories':      categories,
+            'monthly':         fbi.get('monthly', {}),
             'temporal_analysis': {
                 'hourly_distribution':       hourly,
                 'peak_hours':                peak_hours,
@@ -348,8 +559,8 @@ class CrimeService:
         Uses user_preferences for schedule-based temporal analysis.
         """
         current_fbi, dest_fbi = await asyncio.gather(
-            self._get_rates(current_address),
-            self._get_rates(dest_address),
+            self._get_rates(current_address, current_lat, current_lng),
+            self._get_rates(dest_address, dest_lat, dest_lng),
         )
 
         current_data = self._build_location_data(current_fbi, user_preferences)

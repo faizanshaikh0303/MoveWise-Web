@@ -31,7 +31,10 @@ class ScoringService:
         """
         
         # Extract individual scores (lifestyle and convenience are pre-computed by their services)
-        safety_score = crime_data.get('destination', {}).get('safety_score', 70)
+        safety_score = self._relative_safety_score(
+            crime_data.get('current', {}).get('safety_score', 70),
+            crime_data.get('destination', {}).get('safety_score', 70),
+        )
         affordability_score = self._relative_cost_score(
             cost_data.get('current', {}).get('total_monthly', 0),
             cost_data.get('destination', {}).get('total_monthly', 0),
@@ -115,6 +118,19 @@ class ScoringService:
         if pct <=  0.20: return 50.0
         if pct <=  0.30: return 40.0
         return max(20.0, round(40.0 - (pct - 0.30) * 60, 1))
+
+    def _relative_safety_score(self, current_score: float, dest_score: float) -> float:
+        """
+        Score safety relative to where the user is moving FROM.
+        Positive diff = safer destination (better score).
+        """
+        diff = dest_score - current_score
+        if diff > 20:  return 100.0
+        if diff > 10:  return 90.0
+        if diff > 0:   return 80.0
+        if diff > -10: return 70.0
+        if diff > -20: return 55.0
+        return max(20.0, round(55.0 + (diff + 20) * 1.75, 1))
 
     def _score_to_grade(self, score: float) -> str:
         """Convert numeric score to letter grade"""

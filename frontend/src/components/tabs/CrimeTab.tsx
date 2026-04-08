@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  Shield, 
-  TrendingUp, 
+import {
+  Shield,
+  TrendingUp,
   TrendingDown,
   Clock,
   AlertCircle,
@@ -24,48 +24,95 @@ import {
   ResponsiveContainer
 } from 'recharts';
 
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/** Format "02-2024" → "Feb '24" */
+function formatMonth(key: string): string {
+  const [mm, yyyy] = key.split('-');
+  const date = new Date(Number(yyyy), Number(mm) - 1);
+  return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+}
+
+/** Sum all values in a month-keyed rate dict */
+function sumRates(dict: Record<string, number> = {}): number {
+  return Object.values(dict).reduce((a, b) => a + b, 0);
+}
+
+/** Build sorted month keys union across any number of rate dicts */
+function mergedMonths(...dicts: (Record<string, number> | undefined)[]): string[] {
+  const keys = new Set<string>();
+  for (const d of dicts) if (d) Object.keys(d).forEach(k => keys.add(k));
+  return [...keys].sort();
+}
+
+// ── Component ──────────────────────────────────────────────────────────────
+
 const CrimeTab = ({ data }) => {
-  const [selectedLocation, setSelectedLocation] = useState('comparison');
+  const [selectedLocation, setSelectedLocation] = useState('destination');
 
-  const current = data?.current || {};
+  const current     = data?.current     || {};
   const destination = data?.destination || {};
-  const comparison = data?.comparison || {};
+  const comparison  = data?.comparison  || {};
 
-  const categoryData = [
+  const cMonthly = current.monthly     || {};
+  const dMonthly = destination.monthly || {};
+
+  // ── Chart 1: grouped bar chart — offense type × 3-month total, curr vs dest ──
+  const offenseBarData = [
     {
       name: 'Violent',
-      current: current.categories?.violent || 0,
-      destination: destination.categories?.violent || 0
+      current:     sumRates(cMonthly.violent),
+      destination: sumRates(dMonthly.violent),
     },
     {
-      name: 'Larceny',
-      current: current.categories?.larceny || 0,
-      destination: destination.categories?.larceny || 0
+      name: 'Property',
+      current:     sumRates(cMonthly.property),
+      destination: sumRates(dMonthly.property),
     },
     {
       name: 'Burglary',
-      current: current.categories?.burglary || 0,
-      destination: destination.categories?.burglary || 0
+      current:     sumRates(cMonthly.burglary),
+      destination: sumRates(dMonthly.burglary),
     },
     {
-      name: 'Other Property',
-      current: current.categories?.other_property || 0,
-      destination: destination.categories?.other_property || 0
-    }
+      name: 'Larceny',
+      current:     sumRates(cMonthly.larceny),
+      destination: sumRates(dMonthly.larceny),
+    },
   ];
 
-  const hourlyData = (selectedLocation === 'current' ? current : destination).temporal_analysis?.hourly_distribution?.map((count, hour) => ({
-    hour: hour === 0 ? '12AM' : hour < 12 ? `${hour}AM` : hour === 12 ? '12PM' : `${hour-12}PM`,
-    crimes: count
-  })) || [];
+  const hasOffenseData = offenseBarData.some(d => d.current > 0 || d.destination > 0);
 
-  const safetyScore = destination.safety_score || 0;
-  const scoreColor = safetyScore >= 70 ? 'text-green-600' : safetyScore >= 50 ? 'text-yellow-600' : 'text-red-600';
-  const scoreBgColor = safetyScore >= 70 ? 'bg-green-50' : safetyScore >= 50 ? 'bg-yellow-50' : 'bg-red-50';
+  // ── Chart 2: line chart — total crime rate per month, curr vs dest ──────────
+  const months = mergedMonths(cMonthly.violent, cMonthly.property, dMonthly.violent, dMonthly.property);
+
+  const monthlyLineData = months.map(m => ({
+    month: formatMonth(m),
+    current:     Number(((cMonthly.violent?.[m] ?? 0) + (cMonthly.property?.[m] ?? 0)).toFixed(1)),
+    destination: Number(((dMonthly.violent?.[m] ?? 0) + (dMonthly.property?.[m] ?? 0)).toFixed(1)),
+  }));
+
+  const hasMonthlyData = monthlyLineData.length > 0;
+
+  // ── Hourly line chart (existing) ────────────────────────────────────────────
+  const hourlyData = (selectedLocation === 'current' ? current : destination)
+    .temporal_analysis?.hourly_distribution
+    ?.map((count: number, hour: number) => ({
+      hour: hour === 0 ? '12AM' : hour < 12 ? `${hour}AM` : hour === 12 ? '12PM' : `${hour - 12}PM`,
+      crimes: count,
+    })) || [];
+
+  // ── Safety score styling ────────────────────────────────────────────────────
+  const safetyScore  = destination.safety_score || 0;
+  const scoreColor   = safetyScore >= 70 ? 'text-green-600' : safetyScore >= 50 ? 'text-yellow-600' : 'text-red-600';
+  const scoreBgColor = safetyScore >= 70 ? 'bg-green-50'   : safetyScore >= 50 ? 'bg-yellow-50'   : 'bg-red-50';
+
+  const tooltipStyle = { backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' };
 
   return (
     <div className="space-y-6">
-      {/* Header Stats */}
+
+      {/* ── Header Stats ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -130,43 +177,101 @@ const CrimeTab = ({ data }) => {
           <div className="text-4xl font-bold text-gray-900">
             {destination.daily_average?.toFixed(1) || 0}
           </div>
-          <div className="mt-2 text-sm text-gray-600">
-            crimes per day
-          </div>
+          <div className="mt-2 text-sm text-gray-600">crimes per day</div>
         </motion.div>
       </div>
 
-      {/* Crime Comparison Chart - FIXED */}
+      {/* ── Chart 1: Offense Type Bar Chart (3-month totals, per 100k) ───────── */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
         className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
       >
-        <h3 className="text-lg font-bold text-gray-900 mb-4">Crime Categories Comparison</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={categoryData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip 
-              contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
-            />
-            <Legend />
-            {/* Always render both bars */}
-            <Bar dataKey="current" fill="#3b82f6" name="Current Location" radius={[8, 8, 0, 0]} />
-            <Bar dataKey="destination" fill="#10b981" name="New Location" radius={[8, 8, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        <h3 className="text-lg font-bold text-gray-900 mb-1">
+          Crime by Offense Type
+        </h3>
+        <p className="text-xs text-gray-500 mb-4">
+          3-month total rate per 100k population — current vs destination
+        </p>
+        {hasOffenseData ? (
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={offenseBarData} barGap={4} barCategoryGap="30%">
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+              <YAxis tickFormatter={(v) => `${v}`} width={40} />
+              <Tooltip
+                contentStyle={tooltipStyle}
+                formatter={(value: number) => [`${value.toFixed(1)}/100k`, undefined]}
+              />
+              <Legend />
+              <Bar dataKey="current"     fill="#3b82f6" name="Current"     radius={[6, 6, 0, 0]} />
+              <Bar dataKey="destination" fill="#10b981" name="Destination" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-[280px] flex items-center justify-center text-gray-400 text-sm">
+            Monthly breakdown not available — using aggregated data
+          </div>
+        )}
       </motion.div>
 
-      {/* Temporal Analysis */}
+      {/* ── Chart 2: Monthly Total Crime Rate Line Chart ─────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+        className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
+      >
+        <h3 className="text-lg font-bold text-gray-900 mb-1">
+          Monthly Crime Rate Trend
+        </h3>
+        <p className="text-xs text-gray-500 mb-4">
+          Total (violent + property) rate per 100k — month by month
+        </p>
+        {hasMonthlyData ? (
+          <ResponsiveContainer width="100%" height={240}>
+            <LineChart data={monthlyLineData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+              <YAxis tickFormatter={(v) => `${v}`} width={40} />
+              <Tooltip
+                contentStyle={tooltipStyle}
+                formatter={(value: number) => [`${value.toFixed(1)}/100k`, undefined]}
+              />
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey="current"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                dot={{ r: 4 }}
+                name="Current"
+              />
+              <Line
+                type="monotone"
+                dataKey="destination"
+                stroke="#10b981"
+                strokeWidth={2}
+                dot={{ r: 4 }}
+                name="Destination"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-[240px] flex items-center justify-center text-gray-400 text-sm">
+            Monthly trend data not available
+          </div>
+        )}
+      </motion.div>
+
+      {/* ── Time-wise Analysis (unchanged) ───────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-6">
-        {/* Hourly Distribution */}
+        {/* Hourly distribution */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
+          transition={{ delay: 0.5 }}
           className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
         >
           <div className="flex items-center justify-between mb-4">
@@ -178,7 +283,6 @@ const CrimeTab = ({ data }) => {
             >
               <option value="destination">Destination</option>
               <option value="current">Current</option>
-              
             </select>
           </div>
           <ResponsiveContainer width="100%" height={200}>
@@ -186,24 +290,24 @@ const CrimeTab = ({ data }) => {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="hour" tick={{ fontSize: 10 }} />
               <YAxis />
-              <Tooltip 
-                contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
-              />
+              <Tooltip contentStyle={tooltipStyle} />
               <Line type="monotone" dataKey="crimes" stroke="#ef4444" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
           <div className="mt-4 text-sm text-gray-600">
-            Peak hours: <span className="font-semibold">
-              {(selectedLocation === 'current' ? current : destination).temporal_analysis?.peak_hours?.slice(0, 3).join(', ') || 'N/A'}
+            Peak hours:{' '}
+            <span className="font-semibold">
+              {(selectedLocation === 'current' ? current : destination)
+                .temporal_analysis?.peak_hours?.slice(0, 3).join(', ') || 'N/A'}
             </span>
           </div>
         </motion.div>
 
-        {/* Schedule-Based Analysis */}
+        {/* Schedule safety */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
+          transition={{ delay: 0.6 }}
           className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
         >
           <h3 className="text-lg font-bold text-gray-900 mb-4">Your Schedule Safety</h3>
@@ -213,7 +317,7 @@ const CrimeTab = ({ data }) => {
                 <Moon className="h-5 w-5 text-blue-600" />
                 <div>
                   <div className="font-medium text-gray-900">Sleep Hours</div>
-                  <div className="text-sm text-gray-600">10 PM - 6 AM</div>
+                  <div className="text-sm text-gray-600">10 PM – 6 AM</div>
                 </div>
               </div>
               <div className="text-right">
@@ -229,7 +333,7 @@ const CrimeTab = ({ data }) => {
                 <Briefcase className="h-5 w-5 text-yellow-600" />
                 <div>
                   <div className="font-medium text-gray-900">Work Hours</div>
-                  <div className="text-sm text-gray-600">9 AM - 5 PM</div>
+                  <div className="text-sm text-gray-600">9 AM – 5 PM</div>
                 </div>
               </div>
               <div className="text-right">
@@ -245,7 +349,7 @@ const CrimeTab = ({ data }) => {
                 <Sun className="h-5 w-5 text-green-600" />
                 <div>
                   <div className="font-medium text-gray-900">Commute Times</div>
-                  <div className="text-sm text-gray-600">7-9 AM, 5-7 PM</div>
+                  <div className="text-sm text-gray-600">7–9 AM, 5–7 PM</div>
                 </div>
               </div>
               <div className="text-right">
@@ -259,11 +363,11 @@ const CrimeTab = ({ data }) => {
         </motion.div>
       </div>
 
-      {/* Recommendation */}
+      {/* ── Safety Assessment ─────────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.6 }}
+        transition={{ delay: 0.7 }}
         className={`${comparison.is_safer ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'} rounded-xl p-6 border-2`}
       >
         <div className="flex items-start space-x-3">
@@ -278,6 +382,7 @@ const CrimeTab = ({ data }) => {
           </div>
         </div>
       </motion.div>
+
     </div>
   );
 };
