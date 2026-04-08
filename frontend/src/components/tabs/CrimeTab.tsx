@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import {
   Shield,
@@ -26,11 +26,11 @@ import {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/** Format "02-2024" → "Feb '24" */
+/** Format "02-2024" → "Feb" */
 function formatMonth(key: string): string {
   const [mm, yyyy] = key.split('-');
   const date = new Date(Number(yyyy), Number(mm) - 1);
-  return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+  return date.toLocaleDateString('en-US', { month: 'short' });
 }
 
 /** Sum all values in a month-keyed rate dict */
@@ -48,8 +48,6 @@ function mergedMonths(...dicts: (Record<string, number> | undefined)[]): string[
 // ── Component ──────────────────────────────────────────────────────────────
 
 const CrimeTab = ({ data }) => {
-  const [selectedLocation, setSelectedLocation] = useState('destination');
-
   const current     = data?.current     || {};
   const destination = data?.destination || {};
   const comparison  = data?.comparison  || {};
@@ -94,14 +92,6 @@ const CrimeTab = ({ data }) => {
 
   const hasMonthlyData = monthlyLineData.length > 0;
 
-  // ── Hourly line chart (existing) ────────────────────────────────────────────
-  const hourlyData = (selectedLocation === 'current' ? current : destination)
-    .temporal_analysis?.hourly_distribution
-    ?.map((count: number, hour: number) => ({
-      hour: hour === 0 ? '12AM' : hour < 12 ? `${hour}AM` : hour === 12 ? '12PM' : `${hour - 12}PM`,
-      crimes: count,
-    })) || [];
-
   // ── Safety score styling ────────────────────────────────────────────────────
   const safetyScore  = destination.safety_score || 0;
   const scoreColor   = safetyScore >= 70 ? 'text-green-600' : safetyScore >= 50 ? 'text-yellow-600' : 'text-red-600';
@@ -130,7 +120,7 @@ const CrimeTab = ({ data }) => {
             <span className="text-xl text-gray-400">/100</span>
           </div>
           <div className="mt-2 text-sm text-gray-600">
-            {destination.data_source || 'Crime analysis'}
+            {(destination.data_source || 'Crime analysis').replace(/\s*\([\d\-→–]+\)/, '').replace(/\s*\([^)]*\d{4}[^)]*\)/, '')}
           </div>
         </motion.div>
 
@@ -216,98 +206,46 @@ const CrimeTab = ({ data }) => {
         )}
       </motion.div>
 
-      {/* ── Chart 2: Monthly Total Crime Rate Line Chart ─────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-        className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
-      >
-        <h3 className="text-lg font-bold text-gray-900 mb-1">
-          Monthly Crime Rate Trend
-        </h3>
-        <p className="text-xs text-gray-500 mb-4">
-          Total (violent + property) rate per 100k — month by month
-        </p>
-        {hasMonthlyData ? (
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={monthlyLineData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-              <YAxis tickFormatter={(v) => `${v}`} width={40} />
-              <Tooltip
-                contentStyle={tooltipStyle}
-                formatter={(value: number) => [`${value.toFixed(1)}/100k`, undefined]}
-              />
-              <Legend />
-              <Line
-                type="monotone"
-                dataKey="current"
-                stroke="#3b82f6"
-                strokeWidth={2}
-                dot={{ r: 4 }}
-                name="Current"
-              />
-              <Line
-                type="monotone"
-                dataKey="destination"
-                stroke="#10b981"
-                strokeWidth={2}
-                dot={{ r: 4 }}
-                name="Destination"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        ) : (
-          <div className="h-[240px] flex items-center justify-center text-gray-400 text-sm">
-            Monthly trend data not available
-          </div>
-        )}
-      </motion.div>
-
-      {/* ── Time-wise Analysis (unchanged) ───────────────────────────────────── */}
+      {/* ── Time-wise Analysis ───────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-6">
-        {/* Hourly distribution */}
+        {/* Monthly Crime Rate Trend */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
+          transition={{ delay: 0.4 }}
           className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
         >
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold text-gray-900">Crime by Time of Day</h3>
-            <select
-              value={selectedLocation}
-              onChange={(e) => setSelectedLocation(e.target.value)}
-              className="text-sm border border-gray-300 rounded-lg px-3 py-1.5"
-            >
-              <option value="destination">Destination</option>
-              <option value="current">Current</option>
-            </select>
-          </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={hourlyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="hour" tick={{ fontSize: 10 }} />
-              <YAxis />
-              <Tooltip contentStyle={tooltipStyle} />
-              <Line type="monotone" dataKey="crimes" stroke="#ef4444" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-          <div className="mt-4 text-sm text-gray-600">
-            Peak hours:{' '}
-            <span className="font-semibold">
-              {(selectedLocation === 'current' ? current : destination)
-                .temporal_analysis?.peak_hours?.slice(0, 3).join(', ') || 'N/A'}
-            </span>
-          </div>
+          <h3 className="text-lg font-bold text-gray-900 mb-1">Monthly Crime Rate Trend</h3>
+          <p className="text-xs text-gray-500 mb-4">
+            Total (violent + property) rate per 100k — month by month
+          </p>
+          {hasMonthlyData ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={monthlyLineData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                <YAxis tickFormatter={(v) => `${v}`} width={40} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  formatter={(value: number) => [`${value.toFixed(1)}/100k`, undefined]}
+                />
+                <Legend />
+                <Line type="monotone" dataKey="current"     stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} name="Current" />
+                <Line type="monotone" dataKey="destination" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} name="Destination" />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[200px] flex items-center justify-center text-gray-400 text-sm">
+              Monthly trend data not available
+            </div>
+          )}
         </motion.div>
 
         {/* Schedule safety */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
+          transition={{ delay: 0.5 }}
           className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
         >
           <h3 className="text-lg font-bold text-gray-900 mb-4">Your Schedule Safety</h3>
@@ -367,7 +305,7 @@ const CrimeTab = ({ data }) => {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.7 }}
+        transition={{ delay: 0.6 }}
         className={`${comparison.is_safer ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'} rounded-xl p-6 border-2`}
       >
         <div className="flex items-start space-x-3">
