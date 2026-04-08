@@ -222,23 +222,32 @@ class CrimeService:
             return cached
         if not self.api_key:
             return None
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.get(
-                    f"{self.fbi_api_base}/agency/byStateAbbr/{state.upper()}",
-                    params={'API_KEY': self.api_key}
-                )
-            if resp.status_code != 200:
-                print(f"   WARNING FBI agency list {state}: HTTP {resp.status_code}")
+        for attempt in range(3):
+            try:
+                if attempt > 0:
+                    wait = attempt * 2
+                    print(f"   FBI agency list {state}: 503 retry {attempt}/2 (wait {wait}s)")
+                    await asyncio.sleep(wait)
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.get(
+                        f"{self.fbi_api_base}/agency/byStateAbbr/{state.upper()}",
+                        params={'API_KEY': self.api_key}
+                    )
+                if resp.status_code == 503:
+                    continue
+                if resp.status_code != 200:
+                    print(f"   WARNING FBI agency list {state}: HTTP {resp.status_code}")
+                    return None
+                agencies = self._flatten_agency_list(resp.json())
+                if agencies:
+                    cache_set(cache_key, agencies, ttl=CACHE_7_DAYS)
+                    print(f"   FBI agency list {state}: {len(agencies)} agencies cached")
+                return agencies or None
+            except Exception as e:
+                print(f"   WARNING FBI agency list error ({state}): {e}")
                 return None
-            agencies = self._flatten_agency_list(resp.json())
-            if agencies:
-                cache_set(cache_key, agencies, ttl=CACHE_7_DAYS)
-                print(f"   FBI agency list {state}: {len(agencies)} agencies cached")
-            return agencies or None
-        except Exception as e:
-            print(f"   WARNING FBI agency list error ({state}): {e}")
-            return None
+        print(f"   WARNING FBI agency list {state}: all retries failed (503)")
+        return None
 
     async def _fetch_agency_rate(self, state: str, lat: float, lng: float) -> Optional[Dict[str, Any]]:
         """
